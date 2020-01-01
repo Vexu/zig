@@ -10,6 +10,7 @@ const ctok = @import("c_tokenizer.zig");
 const CToken = ctok.CToken;
 const mem = std.mem;
 const math = std.math;
+const CInt = @import("c_int.zig").CInt;
 
 const CallingConvention = std.builtin.CallingConvention;
 
@@ -289,8 +290,7 @@ pub fn translate(
     tree.errors = ast.Tree.ErrorList.init(arena);
 
     tree.root_node = try arena.create(ast.Node.Root);
-    tree.root_node.* = ast.Node.Root{
-        .base = ast.Node{ .id = ast.Node.Id.Root },
+    tree.root_node.* = .{
         .decls = ast.Node.Root.DeclList.init(arena),
         // initialized with the eof token at the end
         .eof_token = undefined,
@@ -750,33 +750,111 @@ fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*
             .rbrace_token = undefined,
         };
 
+        var bitfield = false;
+        var bitcount: u32 = 0;
+
         var it = ZigClangRecordDecl_field_begin(record_def);
         const end_it = ZigClangRecordDecl_field_end(record_def);
         while (ZigClangRecordDecl_field_iterator_neq(it, end_it)) : (it = ZigClangRecordDecl_field_iterator_next(it)) {
             const field_decl = ZigClangRecordDecl_field_iterator_deref(it);
             const field_loc = ZigClangFieldDecl_getLocation(field_decl);
 
-            if (ZigClangFieldDecl_isBitField(field_decl)) {
-                const opaque = try transCreateNodeOpaqueType(c);
-                semicolon = try appendToken(c, .Semicolon, ";");
-                try emitWarning(c, field_loc, "{} demoted to opaque type - has bitfield", .{container_kind_name});
-                break :blk opaque;
-            }
+            var raw_name = if (ZigClangFieldDecl_isUnnamedBitfield(field_decl))
+                try std.fmt.allocPrint(c.a(), "_pad_{}", .{c.getMangle()})
+            else
+                try c.str(ZigClangDecl_getName_bytes_begin(@ptrCast(*const ZigClangDecl, field_decl)));
 
             var is_anon = false;
-            var raw_name = try c.str(ZigClangDecl_getName_bytes_begin(@ptrCast(*const ZigClangDecl, field_decl)));
             if (ZigClangFieldDecl_isAnonymousStructOrUnion(field_decl) or raw_name.len == 0) {
                 raw_name = try std.fmt.allocPrint(c.a(), "unnamed_{}", .{c.getMangle()});
                 is_anon = true;
             }
             const field_name = try appendIdentifier(c, raw_name);
             _ = try appendToken(c, .Colon, ":");
-            const field_type = transQualType(rp, ZigClangFieldDecl_getType(field_decl), field_loc) catch |err| switch (err) {
-                error.UnsupportedType => {
-                    try failDecl(c, record_loc, name, "unable to translate {} member type", .{container_kind_name});
-                    return null;
-                },
-                else => |e| return e,
+
+            const field_qt = ZigClangFieldDecl_getType(field_decl);
+            const field_type = if (ZigClangFieldDecl_isBitField(field_decl)) blk: {
+                if (!bitfield) {
+                    container_node.layout_token = try appendToken(c, .Keyword_packed, "packed");
+                    bitfield = true;
+                }
+                const sign = if (cIsSignedInteger(field_qt)) "i" else "u";
+                var width = ZigClangFieldDecl_getBitWidthValue(field_decl, c.clang_context);
+                // TODO use compilation target
+                var cint: CInt = undefined;
+                const qt_width: u32 = switch (ZigClangBuiltinType_getKind(@ptrCast(*const ZigClangBuiltinType, ZigClangQualType_getTypePtr(field_qt)))) {
+                    .Char_U, .UChar, .Char_S, .SChar => 8,
+                    .Short, .UShort => blk: {
+                        cint.id = .Short;
+                        break :blk cint.sizeInBits(.Native);
+                    },
+                    .Int, .UInt => blk: {
+                        cint.id = .Int;
+                        break :blk cint.sizeInBits(.Native);
+                    },
+                    .Long, .ULong => blk: {
+                        cint.id = .Long;
+                        break :blk cint.sizeInBits(.Native);
+                    },
+                    .LongLong, .ULongLong => blk: {
+                        cint.id = .LongLong;
+                        break :blk cint.sizeInBits(.Native);
+                    },
+                    .UInt128, .Int128 => 128,
+                    else => {
+                        try failDecl(c, record_loc, name, "unknown integer type", .{});
+                        return null;
+                    },
+                };
+                if (container_kind == .Keyword_union) {
+                    if (width == 0)
+                        continue;
+                }
+                if (width == 0) {
+                    width = (qt_width) - bitcount;
+                    bitcount = 0;
+                } else if (bitcount + width > qt_width) {
+                    const pad_width = qt_width - bitcount;
+
+                    const field_node = try c.a().create(ast.Node.ContainerField);
+                    field_node.* = .{
+                        .doc_comments = null,
+                        .comptime_token = null,
+                        .name_token = try appendTokenFmt(c, .Identifier, "_pad_{}", .{c.getMangle()}),
+                        .type_expr = undefined,
+                        .value_expr = null,
+                        .align_expr = null,
+                    };
+                    _ = try appendToken(c, .Colon, ":");
+                    const type_tok = try appendTokenFmt(c, .Identifier, "{}{}", .{ sign, pad_width });
+                    const type_node = try c.a().create(ast.Node.Identifier);
+                    type_node.* = .{
+                        .token = type_tok,
+                    };
+                    field_node.type_expr = &type_node.base;
+
+                    try container_node.fields_and_decls.push(&field_node.base);
+                    _ = try appendToken(c, .Comma, ",");
+
+                    bitcount = width;
+                } else {
+                    bitcount += width;
+                }
+                const type_tok = try appendTokenFmt(c, .Identifier, "{}{}", .{ sign, width });
+                const type_node = try c.a().create(ast.Node.Identifier);
+                type_node.* = .{
+                    .token = type_tok,
+                };
+                break :blk &type_node.base;
+            } else blk: {
+                bitcount = 0;
+                break :blk transQualType(rp, field_qt, field_loc) catch |err| switch (err) {
+                    error.UnsupportedType => {
+                        try failDecl(c, record_loc, name, "unable to translate {} member type", .{container_kind_name});
+                        return null;
+                    },
+                    else => |e| return e,
+                };
             };
 
             const field_node = try c.a().create(ast.Node.ContainerField);
@@ -2129,6 +2207,19 @@ fn transDoWhileLoop(
         .id = .Loop,
     };
 
+    // if (!cond) break;
+    const if_node = try transCreateNodeIf(rp.c);
+    var cond_scope = Scope{
+        .parent = scope,
+        .id = .Condition,
+    };
+    const prefix_op = try transCreateNodePrefixOp(rp.c, .BoolNot, .Bang, "!");
+    prefix_op.rhs = try transBoolExpr(rp, &cond_scope, @ptrCast(*const ZigClangExpr, ZigClangDoStmt_getCond(stmt)), .used, .r_value, true);
+    _ = try appendToken(rp.c, .RParen, ")");
+    if_node.condition = &prefix_op.base;
+    if_node.body = &(try transCreateNodeBreak(rp.c, null)).base;
+    _ = try appendToken(rp.c, .Semicolon, ";");
+
     const body_node = if (ZigClangStmt_getStmtClass(ZigClangDoStmt_getBody(stmt)) == .CompoundStmtClass) blk: {
         // there's already a block in C, so we'll append our condition to it.
         // c: do {
@@ -2140,10 +2231,7 @@ fn transDoWhileLoop(
         // zig:   b;
         // zig:   if (!cond) break;
         // zig: }
-        const body = (try transStmt(rp, &loop_scope, ZigClangDoStmt_getBody(stmt), .unused, .r_value)).cast(ast.Node.Block).?;
-        // if this is used as an expression in Zig it needs to be immediately followed by a semicolon
-        _ = try appendToken(rp.c, .Semicolon, ";");
-        break :blk body;
+        break :blk (try transStmt(rp, &loop_scope, ZigClangDoStmt_getBody(stmt), .unused, .r_value)).cast(ast.Node.Block).?;
     } else blk: {
         // the C statement is without a block, so we need to create a block to contain it.
         // c: do
@@ -2158,19 +2246,6 @@ fn transDoWhileLoop(
         try block.statements.push(try transStmt(rp, &loop_scope, ZigClangDoStmt_getBody(stmt), .unused, .r_value));
         break :blk block;
     };
-
-    // if (!cond) break;
-    const if_node = try transCreateNodeIf(rp.c);
-    var cond_scope = Scope{
-        .parent = scope,
-        .id = .Condition,
-    };
-    const prefix_op = try transCreateNodePrefixOp(rp.c, .BoolNot, .Bang, "!");
-    prefix_op.rhs = try transBoolExpr(rp, &cond_scope, @ptrCast(*const ZigClangExpr, ZigClangDoStmt_getCond(stmt)), .used, .r_value, true);
-    _ = try appendToken(rp.c, .RParen, ")");
-    if_node.condition = &prefix_op.base;
-    if_node.body = &(try transCreateNodeBreak(rp.c, null)).base;
-    _ = try appendToken(rp.c, .Semicolon, ";");
 
     try body_node.statements.push(&if_node.base);
     if (new)
@@ -4335,8 +4410,7 @@ fn finishTransFnProto(
         const type_node = try transQualType(rp, param_qt, source_loc);
 
         const param_node = try rp.c.a().create(ast.Node.ParamDecl);
-        param_node.* = ast.Node.ParamDecl{
-            .base = ast.Node{ .id = ast.Node.Id.ParamDecl },
+        param_node.* = .{
             .doc_comments = null,
             .comptime_token = null,
             .noalias_token = noalias_tok,
@@ -4357,8 +4431,7 @@ fn finishTransFnProto(
         }
 
         const var_arg_node = try rp.c.a().create(ast.Node.ParamDecl);
-        var_arg_node.* = ast.Node.ParamDecl{
-            .base = ast.Node{ .id = ast.Node.Id.ParamDecl },
+        var_arg_node.* = .{
             .doc_comments = null,
             .comptime_token = null,
             .noalias_token = null,
@@ -4483,14 +4556,12 @@ pub fn failDecl(c: *Context, loc: ZigClangSourceLocation, name: []const u8, comp
     const semi_tok = try appendToken(c, .Semicolon, ";");
 
     const msg_node = try c.a().create(ast.Node.StringLiteral);
-    msg_node.* = ast.Node.StringLiteral{
-        .base = ast.Node{ .id = ast.Node.Id.StringLiteral },
+    msg_node.* = .{
         .token = msg_tok,
     };
 
     const call_node = try c.a().create(ast.Node.BuiltinCall);
-    call_node.* = ast.Node.BuiltinCall{
-        .base = ast.Node{ .id = ast.Node.Id.BuiltinCall },
+    call_node.* = .{
         .builtin_token = builtin_tok,
         .params = ast.Node.BuiltinCall.ParamList.init(c.a()),
         .rparen_token = rparen_tok,
@@ -4498,8 +4569,7 @@ pub fn failDecl(c: *Context, loc: ZigClangSourceLocation, name: []const u8, comp
     try call_node.params.push(&msg_node.base);
 
     const var_decl_node = try c.a().create(ast.Node.VarDecl);
-    var_decl_node.* = ast.Node.VarDecl{
-        .base = ast.Node{ .id = ast.Node.Id.VarDecl },
+    var_decl_node.* = .{
         .doc_comments = null,
         .visib_token = pub_tok,
         .thread_local_token = null,
@@ -4605,8 +4675,7 @@ fn appendIdentifier(c: *Context, name: []const u8) !ast.TokenIndex {
 fn transCreateNodeIdentifier(c: *Context, name: []const u8) !*ast.Node {
     const token_index = try appendIdentifier(c, name);
     const identifier = try c.a().create(ast.Node.Identifier);
-    identifier.* = ast.Node.Identifier{
-        .base = ast.Node{ .id = ast.Node.Id.Identifier },
+    identifier.* = .{
         .token = token_index,
     };
     return &identifier.base;
@@ -4745,8 +4814,7 @@ fn transMacroFnDefine(c: *Context, it: *ctok.TokenList.Iterator, name: []const u
 
         const token_index = try appendToken(c, .Keyword_var, "var");
         const identifier = try c.a().create(ast.Node.Identifier);
-        identifier.* = ast.Node.Identifier{
-            .base = ast.Node{ .id = ast.Node.Id.Identifier },
+        identifier.* = .{
             .token = token_index,
         };
 
