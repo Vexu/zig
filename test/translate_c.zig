@@ -343,38 +343,40 @@ pub fn addCases(cases: *tests.TranslateCContext) void {
         \\};
     });
 
-    cases.add("bit fields",
-        \\struct bitfield {
-        \\	unsigned int a : 3;
-        \\	unsigned int b : 6;
-        \\	unsigned int c : 6;
-        \\	unsigned int d : 6;
-        \\	unsigned int : 0;
-        \\	unsigned long e : 22;
-        \\	unsigned int a2 : 3;
-        \\	unsigned int b2 : 6;
-        \\	unsigned int c2 : 6;
-        \\	unsigned int d2 : 6;
-        \\	unsigned int : 0;
-        \\	unsigned long e2 : 22;
-        \\};
-    , &[_][]const u8{
-        \\pub const struct_bitfield = packed struct {
-        \\    a: u3,
-        \\    b: u6,
-        \\    c: u6,
-        \\    d: u6,
-        \\    _pad_1: u11,
-        \\    e: u22,
-        \\    a2: u3,
-        \\    b2: u6,
-        \\    _pad_2: u1,
-        \\    c2: u6,
-        \\    d2: u6,
-        \\    _pad_3: u20,
-        \\    e2: u22,
-        \\};
-    });
+    if (@sizeOf(c_int) == 4 and @sizeOf(c_longlong) == 8) {
+        cases.add("bit fields",
+            \\struct bitfield {
+            \\    unsigned int a : 3;
+            \\    unsigned int b : 6;
+            \\    unsigned int c : 6;
+            \\    unsigned int d : 6;
+            \\    unsigned int : 0;
+            \\    unsigned long long e : 22;
+            \\    unsigned int a2 : 3;
+            \\    unsigned int b2 : 6;
+            \\    unsigned int c2 : 6;
+            \\    unsigned int d2 : 6;
+            \\    unsigned int : 0;
+            \\    unsigned long long e2 : 22;
+            \\};
+        , &[_][]const u8{
+            \\pub const struct_bitfield = packed struct {
+            \\    a: u3,
+            \\    b: u6,
+            \\    c: u6,
+            \\    d: u6,
+            \\    _pad_1: u11,
+            \\    e: u22,
+            \\    a2: u3,
+            \\    b2: u6,
+            \\    _pad_2: u1,
+            \\    c2: u6,
+            \\    d2: u6,
+            \\    _pad_3: u20,
+            \\    e2: u22,
+            \\};
+        });
+    }
 
     cases.add("macro with left shift",
         \\#define REDISMODULE_READ (1<<0)
