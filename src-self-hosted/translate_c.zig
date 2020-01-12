@@ -752,6 +752,7 @@ fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*
 
         var bitfield = false;
         var bitcount: u32 = 0;
+        var remaining: u32 = 0;
 
         var it = ZigClangRecordDecl_field_begin(record_def);
         const end_it = ZigClangRecordDecl_field_end(record_def);
@@ -840,6 +841,7 @@ fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*
                 } else {
                     bitcount += width;
                 }
+                remaining = qt_width - bitcount;
                 const type_tok = try appendTokenFmt(c, .Identifier, "{}{}", .{ sign, width });
                 const type_node = try c.a().create(ast.Node.Identifier);
                 type_node.* = .{
@@ -848,6 +850,7 @@ fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*
                 break :blk &type_node.base;
             } else blk: {
                 bitcount = 0;
+                remaining = 0;
                 break :blk transQualType(rp, field_qt, field_loc) catch |err| switch (err) {
                     error.UnsupportedType => {
                         try failDecl(c, record_loc, name, "unable to translate {} member type", .{container_kind_name});
@@ -873,6 +876,27 @@ fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*
                     raw_name,
                 );
             }
+
+            try container_node.fields_and_decls.push(&field_node.base);
+            _ = try appendToken(c, .Comma, ",");
+        }
+        if (remaining != 0) {
+            const field_node = try c.a().create(ast.Node.ContainerField);
+            field_node.* = .{
+                .doc_comments = null,
+                .comptime_token = null,
+                .name_token = try appendTokenFmt(c, .Identifier, "_pad_{}", .{c.getMangle()}),
+                .type_expr = undefined,
+                .value_expr = null,
+                .align_expr = null,
+            };
+            _ = try appendToken(c, .Colon, ":");
+            const type_tok = try appendTokenFmt(c, .Identifier, "u{}", .{ remaining });
+            const type_node = try c.a().create(ast.Node.Identifier);
+            type_node.* = .{
+                .token = type_tok,
+            };
+            field_node.type_expr = &type_node.base;
 
             try container_node.fields_and_decls.push(&field_node.base);
             _ = try appendToken(c, .Comma, ",");
