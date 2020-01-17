@@ -536,10 +536,6 @@ fn visitVarDecl(c: *Context, var_decl: *const ZigClangVarDecl) Error!void {
         try appendToken(c, .Keyword_threadlocal, "threadlocal");
 
     const scope = &c.global_scope.base;
-
-    // TODO https://github.com/ziglang/zig/issues/3756
-    // TODO https://github.com/ziglang/zig/issues/1802
-    const checked_name = if (isZigPrimitiveType(var_name)) try std.fmt.allocPrint(c.a(), "_{}", .{var_name}) else var_name;
     const var_decl_loc = ZigClangVarDecl_getLocation(var_decl);
 
     const qual_type = ZigClangVarDecl_getTypeSourceInfo_getType(var_decl);
@@ -558,12 +554,12 @@ fn visitVarDecl(c: *Context, var_decl: *const ZigClangVarDecl) Error!void {
     else
         try appendToken(c, .Keyword_var, "var");
 
-    const name_tok = try appendIdentifier(c, checked_name);
+    const name_tok = try appendIdentifier(c, var_name);
 
     _ = try appendToken(c, .Colon, ":");
     const type_node = transQualType(rp, qual_type, var_decl_loc) catch |err| switch (err) {
         error.UnsupportedType => {
-            return failDecl(c, var_decl_loc, checked_name, "unable to resolve variable type", .{});
+            return failDecl(c, var_decl_loc, var_name, "unable to resolve variable type", .{});
         },
         error.OutOfMemory => |e| return e,
     };
@@ -581,14 +577,14 @@ fn visitVarDecl(c: *Context, var_decl: *const ZigClangVarDecl) Error!void {
                 error.UnsupportedTranslation,
                 error.UnsupportedType,
                 => {
-                    return failDecl(c, var_decl_loc, checked_name, "unable to translate initializer", .{});
+                    return failDecl(c, var_decl_loc, var_name, "unable to translate initializer", .{});
                 },
                 error.OutOfMemory => |e| return e,
             }
         else
             try transCreateNodeUndefinedLiteral(c);
     } else if (storage_class != .Extern) {
-        return failDecl(c, var_decl_loc, checked_name, "non-extern variable has no initializer", .{});
+        return failDecl(c, var_decl_loc, var_name, "non-extern variable has no initializer", .{});
     }
 
     const linksection_expr = blk: {
@@ -638,72 +634,85 @@ fn visitVarDecl(c: *Context, var_decl: *const ZigClangVarDecl) Error!void {
         .init_node = init_node,
         .semicolon_token = try appendToken(c, .Semicolon, ";"),
     };
-    return addTopLevelDecl(c, checked_name, &node.base);
+    return addTopLevelDecl(c, var_name, &node.base);
 }
 
 fn transTypeDefAsBuiltin(c: *Context, typedef_decl: *const ZigClangTypedefNameDecl, builtin_name: []const u8) !*ast.Node {
     _ = try c.decl_table.put(@ptrToInt(ZigClangTypedefNameDecl_getCanonicalDecl(typedef_decl)), builtin_name);
-    return transCreateNodeIdentifier(c, builtin_name);
+    const identifier = try c.a().create(ast.Node.Identifier);
+    identifier.* = .{
+        .token = try appendTokenFmt(c, .Identifier, "{}", .{builtin_name}),
+    };
+    return &identifier.base;
 }
 
 fn transTypeDef(c: *Context, typedef_decl: *const ZigClangTypedefNameDecl, top_level_visit: bool) Error!?*ast.Node {
-    if (c.decl_table.get(@ptrToInt(ZigClangTypedefNameDecl_getCanonicalDecl(typedef_decl)))) |kv|
-        return transCreateNodeIdentifier(c, kv.value); // Avoid processing this decl twice
+    if (c.decl_table.get(@ptrToInt(ZigClangTypedefNameDecl_getCanonicalDecl(typedef_decl)))) |kv| { // Avoid processing this decl twice
+        const identifier = try c.a().create(ast.Node.Identifier);
+        identifier.* = .{
+            .token = try appendTokenFmt(c, .Identifier, "{}", .{kv.value}),
+        };
+        return &identifier.base;
+    }
     const rp = makeRestorePoint(c);
 
     const typedef_name = try c.str(ZigClangNamedDecl_getName_bytes_begin(@ptrCast(*const ZigClangNamedDecl, typedef_decl)));
 
-    // TODO https://github.com/ziglang/zig/issues/3756
-    // TODO https://github.com/ziglang/zig/issues/1802
-    const checked_name = if (isZigPrimitiveType(typedef_name)) try std.fmt.allocPrint(c.a(), "_{}", .{typedef_name}) else typedef_name;
-
-    if (mem.eql(u8, checked_name, "uint8_t"))
+    if (mem.eql(u8, typedef_name, "uint8_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "u8")
-    else if (mem.eql(u8, checked_name, "int8_t"))
+    else if (mem.eql(u8, typedef_name, "int8_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "i8")
-    else if (mem.eql(u8, checked_name, "uint16_t"))
+    else if (mem.eql(u8, typedef_name, "uint16_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "u16")
-    else if (mem.eql(u8, checked_name, "int16_t"))
+    else if (mem.eql(u8, typedef_name, "int16_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "i16")
-    else if (mem.eql(u8, checked_name, "uint32_t"))
+    else if (mem.eql(u8, typedef_name, "uint32_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "u32")
-    else if (mem.eql(u8, checked_name, "int32_t"))
+    else if (mem.eql(u8, typedef_name, "int32_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "i32")
-    else if (mem.eql(u8, checked_name, "uint64_t"))
+    else if (mem.eql(u8, typedef_name, "uint64_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "u64")
-    else if (mem.eql(u8, checked_name, "int64_t"))
+    else if (mem.eql(u8, typedef_name, "int64_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "i64")
-    else if (mem.eql(u8, checked_name, "intptr_t"))
+    else if (mem.eql(u8, typedef_name, "intptr_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "isize")
-    else if (mem.eql(u8, checked_name, "uintptr_t"))
+    else if (mem.eql(u8, typedef_name, "uintptr_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "usize")
-    else if (mem.eql(u8, checked_name, "ssize_t"))
+    else if (mem.eql(u8, typedef_name, "ssize_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "isize")
-    else if (mem.eql(u8, checked_name, "size_t"))
+    else if (mem.eql(u8, typedef_name, "size_t"))
         return transTypeDefAsBuiltin(c, typedef_decl, "usize");
 
     if (!top_level_visit) {
-        return transCreateNodeIdentifier(c, checked_name);
+        const identifier = try c.a().create(ast.Node.Identifier);
+        identifier.* = .{
+            .token = try appendTokenFmt(c, .Identifier, "{}", .{typedef_name}),
+        };
+        return &identifier.base;
     }
 
-    _ = try c.decl_table.put(@ptrToInt(ZigClangTypedefNameDecl_getCanonicalDecl(typedef_decl)), checked_name);
+    _ = try c.decl_table.put(@ptrToInt(ZigClangTypedefNameDecl_getCanonicalDecl(typedef_decl)), typedef_name);
     const visib_tok = try appendToken(c, .Keyword_pub, "pub");
     const const_tok = try appendToken(c, .Keyword_const, "const");
-    const node = try transCreateNodeVarDecl(c, true, true, checked_name);
+    const node = try transCreateNodeVarDecl(c, true, true, typedef_name);
     node.eq_token = try appendToken(c, .Equal, "=");
 
     const child_qt = ZigClangTypedefNameDecl_getUnderlyingType(typedef_decl);
     const typedef_loc = ZigClangTypedefNameDecl_getLocation(typedef_decl);
     node.init_node = transQualType(rp, child_qt, typedef_loc) catch |err| switch (err) {
         error.UnsupportedType => {
-            try failDecl(c, typedef_loc, checked_name, "unable to resolve typedef child type", .{});
+            try failDecl(c, typedef_loc, typedef_name, "unable to resolve typedef child type", .{});
             return null;
         },
         error.OutOfMemory => |e| return e,
     };
     node.semicolon_token = try appendToken(c, .Semicolon, ";");
-    try addTopLevelDecl(c, checked_name, &node.base);
-    return transCreateNodeIdentifier(c, checked_name);
+    try addTopLevelDecl(c, typedef_name, &node.base);
+    const identifier = try c.a().create(ast.Node.Identifier);
+    identifier.* = .{
+        .token = try appendTokenFmt(c, .Identifier, "{}", .{typedef_name}),
+    };
+    return &identifier.base;
 }
 
 fn transRecordDecl(c: *Context, record_decl: *const ZigClangRecordDecl) Error!?*ast.Node {
@@ -1820,7 +1829,13 @@ fn transCCast(
         builtin_node.rparen_token = try appendToken(rp.c, .RParen, ")");
 
         const inner_cast_node = try transCreateNodeBuiltinFnCall(rp.c, "@intCast");
-        try inner_cast_node.params.push(try transCreateNodeIdentifier(rp.c, "u1"));
+        try inner_cast_node.params.push(blk: {
+            const identifier = try rp.c.a().create(ast.Node.Identifier);
+            identifier.* = .{
+                .token = try appendTokenFmt(rp.c, .Identifier, "{}", .{"u1"}),
+            };
+            break :blk &identifier.base;
+        });
         _ = try appendToken(rp.c, .Comma, ",");
         try inner_cast_node.params.push(&builtin_node.base);
         inner_cast_node.rparen_token = try appendToken(rp.c, .RParen, ")");
@@ -1831,7 +1846,13 @@ fn transCCast(
 
         if (cIsSignedInteger(dst_type)) {
             const bitcast_node = try transCreateNodeBuiltinFnCall(rp.c, "@bitCast");
-            try bitcast_node.params.push(try transCreateNodeIdentifier(rp.c, "i1"));
+            try bitcast_node.params.push(blk: {
+                const identifier = try rp.c.a().create(ast.Node.Identifier);
+                identifier.* = .{
+                    .token = try appendTokenFmt(rp.c, .Identifier, "{}", .{"i1"}),
+                };
+                break :blk &identifier.base;
+            });
             _ = try appendToken(rp.c, .Comma, ",");
             try bitcast_node.params.push(&inner_cast_node.base);
             bitcast_node.rparen_token = try appendToken(rp.c, .RParen, ")");
@@ -3278,7 +3299,8 @@ fn transQualTypeIntWidthOf(c: *Context, ty: ZigClangQualType, is_signed: bool) T
 fn transTypeIntWidthOf(c: *Context, ty: *const ZigClangType, is_signed: bool) TypeError!*ast.Node {
     assert(ZigClangType_getTypeClass(ty) == .Builtin);
     const builtin_ty = @ptrCast(*const ZigClangBuiltinType, ty);
-    return transCreateNodeIdentifier(c, switch (ZigClangBuiltinType_getKind(builtin_ty)) {
+    const identifier = try c.a().create(ast.Node.Identifier);
+    const name = switch (ZigClangBuiltinType_getKind(builtin_ty)) {
         .Char_U, .Char_S, .UChar, .SChar, .Char8 => if (is_signed) "i8" else "u8",
         .UShort, .Short => if (is_signed) "c_short" else "c_ushort",
         .UInt, .Int => if (is_signed) "c_int" else "c_uint",
@@ -3288,7 +3310,11 @@ fn transTypeIntWidthOf(c: *Context, ty: *const ZigClangType, is_signed: bool) Ty
         .Char16 => if (is_signed) "i16" else "u16",
         .Char32 => if (is_signed) "i32" else "u32",
         else => unreachable, // only call this function when it has already been determined the type is int
-    });
+    };
+    identifier.* = .{
+        .token = try appendTokenFmt(c, .Identifier, "{}", .{name}),
+    };
+    return &identifier.base;
 }
 
 fn isCBuiltinType(qt: ZigClangQualType, kind: ZigClangBuiltinTypeKind) bool {
@@ -4242,7 +4268,8 @@ fn transType(rp: RestorePoint, ty: *const ZigClangType, source_loc: ZigClangSour
     switch (ZigClangType_getTypeClass(ty)) {
         .Builtin => {
             const builtin_ty = @ptrCast(*const ZigClangBuiltinType, ty);
-            return transCreateNodeIdentifier(rp.c, switch (ZigClangBuiltinType_getKind(builtin_ty)) {
+            const identifier = try rp.c.a().create(ast.Node.Identifier);
+            const name = switch (ZigClangBuiltinType_getKind(builtin_ty)) {
                 .Void => "c_void",
                 .Bool => "bool",
                 .Char_U, .UChar, .Char_S, .Char8 => "u8",
@@ -4263,7 +4290,11 @@ fn transType(rp: RestorePoint, ty: *const ZigClangType, source_loc: ZigClangSour
                 .Float16 => "f16",
                 .LongDouble => "c_longdouble",
                 else => return revertAndWarn(rp, error.UnsupportedType, source_loc, "unsupported builtin type", .{}),
-            });
+            };
+            identifier.* = .{
+                .token = try appendTokenFmt(rp.c, .Identifier, "{}", .{name}),
+            };
+            return &identifier.base;
         },
         .FunctionProto => {
             const fn_proto_ty = @ptrCast(*const ZigClangFunctionProtoType, ty);
@@ -4586,12 +4617,20 @@ fn finishTransFnProto(
 
     const return_type_node = blk: {
         if (ZigClangFunctionType_getNoReturnAttr(fn_ty)) {
-            break :blk try transCreateNodeIdentifier(rp.c, "noreturn");
+            const identifier = try rp.c.a().create(ast.Node.Identifier);
+            identifier.* = .{
+                .token = try appendTokenFmt(rp.c, .Identifier, "{}", .{"noreturn"}),
+            };
+            break :blk &identifier.base;
         } else {
             const return_qt = ZigClangFunctionType_getReturnType(fn_ty);
             if (isCVoid(return_qt)) {
                 // convert primitive c_void to actual void (only for return type)
-                break :blk try transCreateNodeIdentifier(rp.c, "void");
+                const identifier = try rp.c.a().create(ast.Node.Identifier);
+                identifier.* = .{
+                    .token = try appendTokenFmt(rp.c, .Identifier, "{}", .{"void"}),
+                };
+                break :blk &identifier.base;
             } else {
                 break :blk transQualType(rp, return_qt, source_loc) catch |err| switch (err) {
                     error.UnsupportedType => {
@@ -4766,7 +4805,7 @@ fn isValidZigIdentifier(name: []const u8) bool {
 }
 
 fn appendIdentifier(c: *Context, name: []const u8) !ast.TokenIndex {
-    if (!isValidZigIdentifier(name) or std.zig.Token.getKeyword(name) != null) {
+    if (isZigPrimitiveType(name) or !isValidZigIdentifier(name) or std.zig.Token.getKeyword(name) != null) {
         return appendTokenFmt(c, .Identifier, "@\"{}\"", .{name});
     } else {
         return appendTokenFmt(c, .Identifier, "{}", .{name});
@@ -4803,15 +4842,12 @@ fn transPreprocessorEntities(c: *Context, unit: *ZigClangASTUnit) Error!void {
                 const begin_loc = ZigClangMacroDefinitionRecord_getSourceRange_getBegin(macro);
 
                 const name = try c.str(raw_name);
-                // TODO https://github.com/ziglang/zig/issues/3756
-                // TODO https://github.com/ziglang/zig/issues/1802
-                const mangled_name = if (isZigPrimitiveType(name)) try std.fmt.allocPrint(c.a(), "_{}", .{name}) else name;
-                if (scope.containsNow(mangled_name)) {
+                if (scope.containsNow(name)) {
                     continue;
                 }
 
                 const begin_c = ZigClangSourceManager_getCharacterData(c.source_manager, begin_loc);
-                ctok.tokenizeCMacro(c, begin_loc, mangled_name, &tok_list, begin_c) catch |err| switch (err) {
+                ctok.tokenizeCMacro(c, begin_loc, name, &tok_list, begin_c) catch |err| switch (err) {
                     error.OutOfMemory => |e| return e,
                     else => {
                         continue;
@@ -4844,9 +4880,9 @@ fn transPreprocessorEntities(c: *Context, unit: *ZigClangASTUnit) Error!void {
                 } else false;
 
                 (if (macro_fn)
-                    transMacroFnDefine(c, &tok_it, mangled_name, begin_loc)
+                    transMacroFnDefine(c, &tok_it, name, begin_loc)
                 else
-                    transMacroDefine(c, &tok_it, mangled_name, begin_loc)) catch |err| switch (err) {
+                    transMacroDefine(c, &tok_it, name, begin_loc)) catch |err| switch (err) {
                     error.ParseError => continue,
                     error.OutOfMemory => |e| return e,
                 };
@@ -5047,14 +5083,21 @@ fn parseCNumLit(c: *Context, tok: *CToken, source_loc: ZigClangSourceLocation) P
         }
 
         const cast_node = try transCreateNodeBuiltinFnCall(c, "@as");
-        try cast_node.params.push(try transCreateNodeIdentifier(c, switch (tok.num_lit_suffix) {
-            .U => "c_uint",
-            .L => "c_long",
-            .LU => "c_ulong",
-            .LL => "c_longlong",
-            .LLU => "c_ulonglong",
-            else => unreachable,
-        }));
+        try cast_node.params.push(blk: {
+            const identifier = try c.a().create(ast.Node.Identifier);
+            const name = switch (tok.num_lit_suffix) {
+                .U => "c_uint",
+                .L => "c_long",
+                .LU => "c_ulong",
+                .LL => "c_longlong",
+                .LLU => "c_ulonglong",
+                else => unreachable,
+            };
+            identifier.* = .{
+                .token = try appendTokenFmt(c, .Identifier, "{}", .{name}),
+            };
+            break :blk &identifier.base;
+        });
         _ = try appendToken(c, .Comma, ",");
         try cast_node.params.push(try transCreateNodeInt(c, lit_bytes));
         cast_node.rparen_token = try appendToken(c, .RParen, ")");
@@ -5064,11 +5107,18 @@ fn parseCNumLit(c: *Context, tok: *CToken, source_loc: ZigClangSourceLocation) P
             return transCreateNodeFloat(c, tok.bytes);
         }
         const cast_node = try transCreateNodeBuiltinFnCall(c, "@as");
-        try cast_node.params.push(try transCreateNodeIdentifier(c, switch (tok.num_lit_suffix) {
-            .F => "f32",
-            .L => "f64",
-            else => unreachable,
-        }));
+        try cast_node.params.push(blk: {
+            const identifier = try c.a().create(ast.Node.Identifier);
+            const name = switch (tok.num_lit_suffix) {
+                .F => "f32",
+                .L => "f64",
+                else => unreachable,
+            };
+            identifier.* = .{
+                .token = try appendTokenFmt(c, .Identifier, "{}", .{name}),
+            };
+            break :blk &identifier.base;
+        });
         _ = try appendToken(c, .Comma, ",");
         try cast_node.params.push(try transCreateNodeFloat(c, tok.bytes));
         cast_node.rparen_token = try appendToken(c, .RParen, ")");

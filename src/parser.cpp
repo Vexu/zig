@@ -206,7 +206,7 @@ static void put_back_token(ParseContext *pc) {
 static Buf *token_buf(Token *token) {
     if (token == nullptr)
         return nullptr;
-    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdPrimitiveType || token->id == TokenIdSymbol);
+    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdPrimitiveType || token->id == TokenIdSymbol || token->id == TokenIdUnderscore);
     return &token->data.str_lit.str;
 }
 
@@ -216,7 +216,7 @@ static BigInt *token_bigint(Token *token) {
 }
 
 static AstNode *token_symbol(ParseContext *pc, Token *token) {
-    assert(token->id == TokenIdSymbol);
+    assert(token->id == TokenIdSymbol || token->id == TokenIdUnderscore);
     AstNode *res = ast_create_node(pc, NodeTypeSymbol, token);
     res->data.symbol_expr.symbol = token_buf(token);
     return res;
@@ -842,9 +842,11 @@ static AstNode *ast_parse_var_decl(ParseContext *pc) {
     return res;
 }
 
-// ContainerField <- IDENTIFIER (COLON TypeExpr ByteAlign?)? (EQUAL Expr)?
+// ContainerField <- (IDENTIFIER / UNDERSCORE) (COLON TypeExpr ByteAlign?)? (EQUAL Expr)?
 static AstNode *ast_parse_container_field(ParseContext *pc) {
     Token *identifier = eat_token_if(pc, TokenIdSymbol);
+    if (identifier == nullptr)
+        identifier = eat_token_if(pc, TokenIdUnderscore);
     if (identifier == nullptr)
         return nullptr;
 
@@ -1965,12 +1967,14 @@ static AstNode *ast_parse_asm_output(ParseContext *pc) {
     return res;
 }
 
-// AsmOutputItem <- LBRACKET IDENTIFIER RBRACKET STRINGLITERAL LPAREN (MINUSRARROW TypeExpr / IDENTIFIER) RPAREN
+// AsmOutputItem <- LBRACKET (IDENTIFIER / UNDERSCORE) RBRACKET STRINGLITERAL LPAREN (MINUSRARROW TypeExpr / IDENTIFIER) RPAREN
 static AsmOutput *ast_parse_asm_output_item(ParseContext *pc) {
     if (eat_token_if(pc, TokenIdLBracket) == nullptr)
         return nullptr;
 
-    Token *sym_name = expect_token(pc, TokenIdSymbol);
+    Token *sym_name = eat_token_if(pc, TokenIdUnderscore);
+    if (sym_name == nullptr)
+        sym_name = expect_token(pc, TokenIdSymbol);
     expect_token(pc, TokenIdRBracket);
 
     Token *str = eat_token_if(pc, TokenIdMultilineStringLiteral);
@@ -2009,12 +2013,14 @@ static AstNode *ast_parse_asm_input(ParseContext *pc) {
     return res;
 }
 
-// AsmInputItem <- LBRACKET IDENTIFIER RBRACKET STRINGLITERAL LPAREN Expr RPAREN
+// AsmInputItem <- LBRACKET (IDENTIFIER / UNDERSCORE) RBRACKET STRINGLITERAL LPAREN Expr RPAREN
 static AsmInput *ast_parse_asm_input_item(ParseContext *pc) {
     if (eat_token_if(pc, TokenIdLBracket) == nullptr)
         return nullptr;
 
-    Token *sym_name = expect_token(pc, TokenIdSymbol);
+    Token *sym_name = eat_token_if(pc, TokenIdUnderscore);
+    if (sym_name == nullptr)
+        sym_name = expect_token(pc, TokenIdSymbol);
     expect_token(pc, TokenIdRBracket);
 
     Token *constraint = eat_token_if(pc, TokenIdMultilineStringLiteral);
@@ -2155,7 +2161,7 @@ static Optional<AstNodeFnProto> ast_parse_fn_cc(ParseContext *pc) {
     return Optional<AstNodeFnProto>::none();
 }
 
-// ParamDecl <- (KEYWORD_noalias / KEYWORD_comptime)? (IDENTIFIER COLON)? ParamType
+// ParamDecl <- (KEYWORD_noalias / KEYWORD_comptime)? ((IDENTIFIER / UNDERSCORE) COLON)? ParamType
 static AstNode *ast_parse_param_decl(ParseContext *pc) {
     Buf doc_comments = BUF_INIT;
     ast_parse_doc_comments(pc, &doc_comments);
@@ -2165,6 +2171,8 @@ static AstNode *ast_parse_param_decl(ParseContext *pc) {
         first = eat_token_if(pc, TokenIdKeywordCompTime);
 
     Token *name = eat_token_if(pc, TokenIdSymbol);
+    if (name == nullptr)
+        name = eat_token_if(pc, TokenIdUnderscore);
     if (name != nullptr) {
         if (eat_token_if(pc, TokenIdColon) != nullptr) {
             if (first == nullptr)
@@ -2324,7 +2332,7 @@ static Optional<PtrPayload> ast_parse_ptr_payload(ParseContext *pc) {
     return Optional<PtrPayload>::some(res);
 }
 
-// PtrIndexPayload <- PIPE ASTERISK? IDENTIFIER (COMMA IDENTIFIER)? PIPE
+// PtrIndexPayload <- PIPE ASTERISK? (IDENTIFIER / UNDERSCORE) (COMMA (IDENTIFIER / UNDERSCORE))? PIPE
 static Optional<PtrIndexPayload> ast_parse_ptr_index_payload(ParseContext *pc) {
     if (eat_token_if(pc, TokenIdBinOr) == nullptr)
         return Optional<PtrIndexPayload>::none();
@@ -2334,8 +2342,11 @@ static Optional<PtrIndexPayload> ast_parse_ptr_index_payload(ParseContext *pc) {
     if (payload == nullptr)
         payload = expect_token(pc, TokenIdSymbol);
     Token *index = nullptr;
-    if (eat_token_if(pc, TokenIdComma) != nullptr)
-        index = expect_token(pc, TokenIdSymbol);
+    if (eat_token_if(pc, TokenIdComma) != nullptr) {
+        index = eat_token_if(pc, TokenIdUnderscore);
+        if (index == nullptr)
+            index = expect_token(pc, TokenIdSymbol);
+    }
     expect_token(pc, TokenIdBinOr);
 
     PtrIndexPayload res;
@@ -2369,6 +2380,7 @@ static AstNode *ast_parse_switch_prong(ParseContext *pc) {
 // SwitchCase
 //     <- SwitchItem (COMMA SwitchItem)* COMMA?
 //      / KEYWORD_else
+//      / UNDERSCORE
 static AstNode *ast_parse_switch_case(ParseContext *pc) {
     AstNode *first = ast_parse_switch_item(pc);
     if (first != nullptr) {
@@ -2391,6 +2403,10 @@ static AstNode *ast_parse_switch_case(ParseContext *pc) {
     Token *else_token = eat_token_if(pc, TokenIdKeywordElse);
     if (else_token != nullptr)
         return ast_create_node(pc, NodeTypeSwitchProng, else_token);
+
+    Token *underscore = eat_token_if(pc, TokenIdUnderscore);
+    if (underscore != nullptr)
+        return ast_create_node(pc, NodeTypeSwitchProng, underscore);
 
     return nullptr;
 }

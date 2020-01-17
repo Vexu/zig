@@ -1828,12 +1828,16 @@ pub fn addCases(cases: *tests.CompileErrorContext) void {
         \\export fn entry1() void {
         \\    const T = @IntType(false, 65536);
         \\}
+    , &[_][]const u8{
+        "tmp.zig:2:31: error: integer value 65536 cannot be coerced to type 'u16'",
+    });
+
+    cases.add("exceeded maximum bit width of integer",
         \\export fn entry2() void {
         \\    var x: i65536 = 1;
         \\}
     , &[_][]const u8{
-        "tmp.zig:2:31: error: integer value 65536 cannot be coerced to type 'u16'",
-        "tmp.zig:5:12: error: primitive integer type 'i65536' exceeds maximum bit width of 65535",
+        "tmp.zig:2:18: error: primitive integer type exceeds maximum bit width of 65535",
     });
 
     cases.add("compile error when evaluating return type of inferred error set",
@@ -2192,15 +2196,6 @@ pub fn addCases(cases: *tests.CompileErrorContext) void {
         \\}
     , &[_][]const u8{
         "tmp.zig:2:30: error: @frame() called outside of function definition",
-    });
-
-    cases.add("`_` is not a declarable symbol",
-        \\export fn f1() usize {
-        \\    var _: usize = 2;
-        \\    return _;
-        \\}
-    , &[_][]const u8{
-        "tmp.zig:2:5: error: `_` is not a declarable symbol",
     });
 
     cases.add("`_` should not be usable inside for",
@@ -5563,15 +5558,6 @@ pub fn addCases(cases: *tests.CompileErrorContext) void {
         \\}
     , &[_][]const u8{
         "tmp.zig:2:17: error: expected type 'u3', found 'u8'",
-    });
-
-    cases.add("globally shadowing a primitive type",
-        \\const u16 = @intType(false, 8);
-        \\export fn entry() void {
-        \\    const a: u16 = 300;
-        \\}
-    , &[_][]const u8{
-        "tmp.zig:1:1: error: declaration shadows primitive type 'u16'",
     });
 
     cases.add("implicitly increasing pointer alignment",

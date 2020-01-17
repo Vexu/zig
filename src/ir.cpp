@@ -6900,11 +6900,6 @@ static IrInstruction *ir_gen_var_decl(IrBuilder *irb, Scope *scope, AstNode *nod
 
     AstNodeVariableDeclaration *variable_declaration = &node->data.variable_declaration;
 
-    if (buf_eql_str(variable_declaration->symbol, "_")) {
-        add_node_error(irb->codegen, node, buf_sprintf("`_` is not a declarable symbol"));
-        return irb->codegen->invalid_instruction;
-    }
-
     // Used for the type expr and the align expr
     Scope *comptime_scope = create_comptime_scope(irb->codegen, node, scope);
 
