@@ -152,6 +152,31 @@ static const struct ZigKeyword zig_keywords[] = {
     {"var", TokenIdKeywordVar},
     {"volatile", TokenIdKeywordVolatile},
     {"while", TokenIdKeywordWhile},
+
+    {"_", TokenIdUnderscore},
+    {"anyerror", TokenIdPrimitiveType},
+    {"bool", TokenIdPrimitiveType},
+    {"comptime_int", TokenIdPrimitiveType},
+    {"comptime_float", TokenIdPrimitiveType},
+    {"c_short", TokenIdPrimitiveType},
+    {"c_ushort", TokenIdPrimitiveType},
+    {"c_int", TokenIdPrimitiveType},
+    {"c_uint", TokenIdPrimitiveType},
+    {"c_long", TokenIdPrimitiveType},
+    {"c_ulong", TokenIdPrimitiveType},
+    {"c_longlong", TokenIdPrimitiveType},
+    {"c_ulonglong", TokenIdPrimitiveType},
+    {"c_longdouble", TokenIdPrimitiveType},
+    {"c_void", TokenIdPrimitiveType},
+    {"f16", TokenIdPrimitiveType},
+    {"f32", TokenIdPrimitiveType},
+    {"f64", TokenIdPrimitiveType},
+    {"f128", TokenIdPrimitiveType},
+    {"isize", TokenIdPrimitiveType},
+    {"noreturn", TokenIdPrimitiveType},
+    {"type", TokenIdPrimitiveType},
+    {"usize", TokenIdPrimitiveType},
+    {"void", TokenIdPrimitiveType},
 };
 
 bool is_zig_keyword(Buf *buf) {
@@ -306,7 +331,26 @@ static void end_token(Tokenize *t) {
     } else if (t->cur_tok->id == TokenIdSymbol) {
         char *token_mem = buf_ptr(t->buf) + t->cur_tok->start_pos;
         int token_len = (int)(t->cur_tok->end_pos - t->cur_tok->start_pos);
+        if (token_len > 1 && (token_mem[0] == 'i' || token_mem[0] == 'u')) {
+            bool is_signed = (token_mem[0] == 'i');
+            for (int i = 1; i < token_len; i += 1) {
+                uint8_t c = token_mem[i];
+                if (c < '0' || c > '9') {
+                    goto not_integer;
+                }
+            }
+            unsigned long int bit_count = strtoul(token_mem + 1, nullptr, 10);
 
+            // strtoul returns ULONG_MAX on errors, so this comparison catches that as well.
+            if (bit_count >= 65536) tokenize_error(t, "primitive integer type exceeds maximum bit width of 65535");
+            t->cur_tok->id = TokenIdIntType;
+            t->cur_tok->data.int_type.bit_count = bit_count;
+            t->cur_tok->data.int_type.is_signed = is_signed;
+            t->cur_tok = nullptr;
+            return;
+        }
+
+not_integer:
         for (size_t i = 0; i < array_length(zig_keywords); i += 1) {
             if (mem_eql_str(token_mem, token_len, zig_keywords[i].text)) {
                 t->cur_tok->id = zig_keywords[i].token_id;
@@ -1481,7 +1525,7 @@ void tokenize(Buf *buf, Tokenization *out) {
     }
 }
 
-const char * token_name(TokenId id) {
+const char * token_name_id(TokenId id) {
     switch (id) {
         case TokenIdAmpersand: return "&";
         case TokenIdArrow: return "->";
@@ -1600,16 +1644,31 @@ const char * token_name(TokenId id) {
         case TokenIdTimesPercent: return "*%";
         case TokenIdTimesPercentEq: return "*%=";
         case TokenIdBarBarEq: return "||=";
+        case TokenIdPrimitiveType: return "PrimitiveType";
+        case TokenIdIntType: return "IntType";
+        case TokenIdUnderscore: return "_";
         case TokenIdCount:
             zig_unreachable();
     }
     return "(invalid token)";
 }
 
+const char *token_name(Token *token) {
+    if (token->id == TokenIdPrimitiveType) {
+        return buf_ptr(&token->data.str_lit.str);
+    } else if (token->id == TokenIdIntType) {
+        static char int_name[10];
+        sprintf(int_name, "%s%u", token->data.int_type.is_signed ? "i" : "u", token->data.int_type.bit_count);
+        return int_name;
+    } else {
+        return token_name_id(token->id);
+    }
+}
+
 void print_tokens(Buf *buf, ZigList<Token> *tokens) {
     for (size_t i = 0; i < tokens->length; i += 1) {
         Token *token = &tokens->at(i);
-        fprintf(stderr, "%s ", token_name(token->id));
+        fprintf(stderr, "%s ", token_name(token));
         if (token->start_pos != SIZE_MAX) {
             fwrite(buf_ptr(buf) + token->start_pos, 1, token->end_pos - token->start_pos, stderr);
         }

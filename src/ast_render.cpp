@@ -270,6 +270,12 @@ static const char *node_type_str(NodeType node_type) {
             return "ErrorSetField";
         case NodeTypeVarFieldType:
             return "VarFieldType";
+        case NodeTypePrimitiveType:
+            return "PrimitiveType";
+        case NodeTypeIntType:
+            return "IntType";
+        case NodeTypeUnderscore:
+            return "Underscore";
     }
     zig_unreachable();
 }
@@ -1210,6 +1216,18 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
             }
         case NodeTypeVarFieldType: {
             fprintf(ar->f, "var");
+            break;
+        }
+        case NodeTypePrimitiveType: {
+            fprintf(ar->f, "%s", buf_ptr(node->data.primitive_type.name));
+            break;
+        }
+        case NodeTypeIntType: {
+            fprintf(ar->f, "%s%u", node->data.int_type.is_signed ? "i" : "u", node->data.int_type.bit_count);
+            break;
+        }
+        case NodeTypeUnderscore: {
+            fprintf(ar->f, "_");
             break;
         }
         case NodeTypeParamDecl:

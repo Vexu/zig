@@ -4338,19 +4338,12 @@ static ZigVar *create_local_var(CodeGen *codegen, AstNode *node, Scope *parent_s
                 }
                 variable_entry->var_type = codegen->builtin_types.entry_invalid;
             } else {
-                ZigType *type;
-                if (get_primitive_type(codegen, name, &type) != ErrorPrimitiveTypeNotFound) {
-                    add_node_error(codegen, node,
-                            buf_sprintf("variable shadows primitive type '%s'", buf_ptr(name)));
+                Tld *tld = find_decl(codegen, parent_scope, name);
+                if (tld != nullptr) {
+                    ErrorMsg *msg = add_node_error(codegen, node,
+                            buf_sprintf("redefinition of '%s'", buf_ptr(name)));
+                    add_error_note(codegen, msg, tld->source_node, buf_sprintf("previous definition is here"));
                     variable_entry->var_type = codegen->builtin_types.entry_invalid;
-                } else {
-                    Tld *tld = find_decl(codegen, parent_scope, name);
-                    if (tld != nullptr) {
-                        ErrorMsg *msg = add_node_error(codegen, node,
-                                buf_sprintf("redefinition of '%s'", buf_ptr(name)));
-                        add_error_note(codegen, msg, tld->source_node, buf_sprintf("previous definition is here"));
-                        variable_entry->var_type = codegen->builtin_types.entry_invalid;
-                    }
                 }
             }
         }
@@ -4926,42 +4919,9 @@ static void populate_invalid_variable_in_scope(CodeGen *g, Scope *scope, AstNode
 }
 
 static IrInstruction *ir_gen_symbol(IrBuilder *irb, Scope *scope, AstNode *node, LVal lval, ResultLoc *result_loc) {
-    Error err;
     assert(node->type == NodeTypeSymbol);
 
     Buf *variable_name = node->data.symbol_expr.symbol;
-
-    if (buf_eql_str(variable_name, "_")) {
-        if (lval == LValPtr) {
-            IrInstructionConst *const_instruction = ir_build_instruction<IrInstructionConst>(irb, scope, node);
-            const_instruction->base.value->type = get_pointer_to_type(irb->codegen,
-                    irb->codegen->builtin_types.entry_void, false);
-            const_instruction->base.value->special = ConstValSpecialStatic;
-            const_instruction->base.value->data.x_ptr.special = ConstPtrSpecialDiscard;
-            return &const_instruction->base;
-        } else {
-            add_node_error(irb->codegen, node, buf_sprintf("`_` may only be used to assign things to"));
-            return irb->codegen->invalid_instruction;
-        }
-    }
-
-    ZigType *primitive_type;
-    if ((err = get_primitive_type(irb->codegen, variable_name, &primitive_type))) {
-        if (err == ErrorOverflow) {
-            add_node_error(irb->codegen, node,
-                buf_sprintf("primitive integer type '%s' exceeds maximum bit width of 65535",
-                    buf_ptr(variable_name)));
-            return irb->codegen->invalid_instruction;
-        }
-        assert(err == ErrorPrimitiveTypeNotFound);
-    } else {
-        IrInstruction *value = ir_build_const_type(irb, scope, node, primitive_type);
-        if (lval == LValPtr) {
-            return ir_build_ref(irb, scope, node, value, false, false);
-        } else {
-            return ir_expr_wrap(irb, scope, value, result_loc);
-        }
-    }
 
     ScopeFnDef *crossed_fndef_scope;
     ZigVar *var = find_variable(irb->codegen, scope, variable_name, &crossed_fndef_scope);
@@ -8987,6 +8947,49 @@ static IrInstruction *ir_gen_suspend(IrBuilder *irb, Scope *parent_scope, AstNod
     return ir_mark_gen(ir_build_suspend_finish(irb, parent_scope, node, begin));
 }
 
+static IrInstruction *ir_gen_primitive_type(IrBuilder *irb, Scope *scope, AstNode *node, LVal lval, ResultLoc *result_loc) {
+    assert(node->type == NodeTypePrimitiveType);
+
+    auto primitive_table_entry = irb->codegen->primitive_type_table.maybe_get(node->data.primitive_type.name);
+    if (primitive_table_entry == nullptr)
+        zig_panic("primitive type not found");
+
+    ZigType *primitive_type = primitive_table_entry->value;
+    IrInstruction *value = ir_build_const_type(irb, scope, node, primitive_type);
+    if (lval == LValPtr) {
+        return ir_build_ref(irb, scope, node, value, false, false);
+    } else {
+        return ir_expr_wrap(irb, scope, value, result_loc);
+    }
+}
+
+static IrInstruction *ir_gen_int_type(IrBuilder *irb, Scope *scope, AstNode *node, LVal lval, ResultLoc *result_loc) {
+    assert(node->type == NodeTypeIntType);
+
+    ZigType *primitive_type = get_int_type(irb->codegen, node->data.int_type.is_signed, node->data.int_type.bit_count);
+    IrInstruction *value = ir_build_const_type(irb, scope, node, primitive_type);
+    if (lval == LValPtr) {
+        return ir_build_ref(irb, scope, node, value, false, false);
+    } else {
+        return ir_expr_wrap(irb, scope, value, result_loc);
+    }
+}
+
+static IrInstruction *ir_gen_underscore(IrBuilder *irb, Scope *scope, AstNode *node, LVal lval, ResultLoc *result_loc) {
+    assert(node->type == NodeTypeUnderscore);
+    if (lval == LValPtr) {
+        IrInstructionConst *const_instruction = ir_build_instruction<IrInstructionConst>(irb, scope, node);
+        const_instruction->base.value->type = get_pointer_to_type(irb->codegen,
+                irb->codegen->builtin_types.entry_void, false);
+        const_instruction->base.value->special = ConstValSpecialStatic;
+        const_instruction->base.value->data.x_ptr.special = ConstPtrSpecialDiscard;
+        return &const_instruction->base;
+    } else {
+        add_node_error(irb->codegen, node, buf_sprintf("`_` may only be used to assign things to"));
+        return irb->codegen->invalid_instruction;
+    }
+}
+
 static IrInstruction *ir_gen_node_raw(IrBuilder *irb, AstNode *node, Scope *scope,
         LVal lval, ResultLoc *result_loc)
 {
@@ -9130,6 +9133,12 @@ static IrInstruction *ir_gen_node_raw(IrBuilder *irb, AstNode *node, Scope *scop
         case NodeTypeVarFieldType:
             return ir_lval_wrap(irb, scope,
                     ir_build_const_type(irb, scope, node, irb->codegen->builtin_types.entry_var), lval, result_loc);
+        case NodeTypePrimitiveType:
+            return ir_gen_primitive_type(irb, scope, node, lval, result_loc);
+        case NodeTypeIntType:
+            return ir_gen_int_type(irb, scope, node, lval, result_loc);
+        case NodeTypeUnderscore:
+            return ir_gen_underscore(irb, scope, node, lval, result_loc);
     }
     zig_unreachable();
 }

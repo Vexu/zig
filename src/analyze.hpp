@@ -215,8 +215,6 @@ bool type_can_fail(ZigType *type_entry);
 bool fn_eval_cacheable(Scope *scope, ZigType *return_type);
 AstNode *type_decl_node(ZigType *type_entry);
 
-Error get_primitive_type(CodeGen *g, Buf *name, ZigType **result);
-
 bool calling_convention_allows_zig_types(CallingConvention cc);
 const char *calling_convention_name(CallingConvention cc);
 

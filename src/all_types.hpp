@@ -629,6 +629,9 @@ enum NodeType {
     NodeTypeAnyFrameType,
     NodeTypeEnumLiteral,
     NodeTypeVarFieldType,
+    NodeTypePrimitiveType,
+    NodeTypeIntType,
+    NodeTypeUnderscore,
 };
 
 enum FnInline {
@@ -1122,6 +1125,18 @@ struct AstNodeEnumLiteral {
     Token *identifier;
 };
 
+struct AstNodePrimitiveType {
+    Buf *name;
+};
+
+struct AstNodeIntType {
+    bool is_signed;
+    uint16_t bit_count;
+};
+
+struct AstNodeUnderscore {
+};
+
 struct AstNode {
     enum NodeType type;
     bool already_traced_this_node;
@@ -1185,6 +1200,9 @@ struct AstNode {
         AstNodeSuspend suspend;
         AstNodeAnyFrameType anyframe_type;
         AstNodeEnumLiteral enum_literal;
+        AstNodePrimitiveType primitive_type;
+        AstNodeIntType int_type;
+        AstNodeUnderscore underscore;
     } data;
 
     // This is a function for use in the debugger to print

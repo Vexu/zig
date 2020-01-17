@@ -130,6 +130,9 @@ enum TokenId {
     TokenIdTimesEq,
     TokenIdTimesPercent,
     TokenIdTimesPercentEq,
+    TokenIdPrimitiveType,
+    TokenIdIntType,
+    TokenIdUnderscore,
     TokenIdCount,
 };
 
@@ -152,6 +155,11 @@ struct TokenCharLit {
     uint32_t c;
 };
 
+struct TokenIntType {
+    bool is_signed;
+    uint16_t bit_count;
+};
+
 struct Token {
     TokenId id;
     size_t start_pos;
@@ -166,11 +174,14 @@ struct Token {
         // TokenIdFloatLiteral
         TokenFloatLit float_lit;
 
-        // TokenIdStringLiteral, TokenIdMultilineStringLiteral or TokenIdSymbol
+        // TokenIdStringLiteral, TokenIdMultilineStringLiteral, TokenIdPrimitiveType or TokenIdSymbol
         TokenStrLit str_lit;
 
         // TokenIdCharLiteral
         TokenCharLit char_lit;
+
+        // TokenIdIntType
+        TokenIntType int_type;
     } data;
 };
 // work around conflicting name Token which is also found in libclang
@@ -190,7 +201,8 @@ void tokenize(Buf *buf, Tokenization *out_tokenization);
 
 void print_tokens(Buf *buf, ZigList<Token> *tokens);
 
-const char * token_name(TokenId id);
+const char * token_name_id(TokenId id);
+const char * token_name(Token *token);
 
 bool valid_symbol_starter(uint8_t c);
 bool is_zig_keyword(Buf *buf);

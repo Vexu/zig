@@ -93,7 +93,7 @@ fn _start() callconv(.Naked) noreturn {
                 : [argc] "={rsp}" (-> [*]usize)
             );
         },
-        .i386 => {
+        .@"i386" => {
             starting_stack_ptr = asm (""
                 : [argc] "={esp}" (-> [*]usize)
             );

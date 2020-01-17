@@ -3593,12 +3593,6 @@ static void add_top_level_decl(CodeGen *g, ScopeDecls *decls_scope, Tld *tld) {
             add_error_note(g, msg, other_tld->source_node, buf_sprintf("previous definition is here"));
             return;
         }
-
-        ZigType *type;
-        if (get_primitive_type(g, tld->name, &type) != ErrorPrimitiveTypeNotFound) {
-            add_node_error(g, tld->source_node,
-                buf_sprintf("declaration shadows primitive type '%s'", buf_ptr(tld->name)));
-        }
     }
 }
 
@@ -3758,6 +3752,9 @@ void scan_decls(CodeGen *g, ScopeDecls *decls_scope, AstNode *node) {
         case NodeTypeAnyFrameType:
         case NodeTypeErrorSetField:
         case NodeTypeVarFieldType:
+        case NodeTypePrimitiveType:
+        case NodeTypeIntType:
+        case NodeTypeUnderscore:
             zig_unreachable();
     }
 }
@@ -3849,26 +3846,19 @@ ZigVar *add_variable(CodeGen *g, AstNode *source_node, Scope *parent_scope, Buf 
             }
             variable_entry->var_type = g->builtin_types.entry_invalid;
         } else {
-            ZigType *type;
-            if (get_primitive_type(g, name, &type) != ErrorPrimitiveTypeNotFound) {
-                add_node_error(g, source_node,
-                        buf_sprintf("variable shadows primitive type '%s'", buf_ptr(name)));
-                variable_entry->var_type = g->builtin_types.entry_invalid;
-            } else {
-                Scope *search_scope = nullptr;
-                if (src_tld == nullptr) {
-                    search_scope = parent_scope;
-                } else if (src_tld->parent_scope != nullptr && src_tld->parent_scope->parent != nullptr) {
-                    search_scope = src_tld->parent_scope->parent;
-                }
-                if (search_scope != nullptr) {
-                    Tld *tld = find_decl(g, search_scope, name);
-                    if (tld != nullptr && tld != src_tld) {
-                        ErrorMsg *msg = add_node_error(g, source_node,
-                                buf_sprintf("redefinition of '%s'", buf_ptr(name)));
-                        add_error_note(g, msg, tld->source_node, buf_sprintf("previous definition is here"));
-                        variable_entry->var_type = g->builtin_types.entry_invalid;
-                    }
+            Scope *search_scope = nullptr;
+            if (src_tld == nullptr) {
+                search_scope = parent_scope;
+            } else if (src_tld->parent_scope != nullptr && src_tld->parent_scope->parent != nullptr) {
+                search_scope = src_tld->parent_scope->parent;
+            }
+            if (search_scope != nullptr) {
+                Tld *tld = find_decl(g, search_scope, name);
+                if (tld != nullptr && tld != src_tld) {
+                    ErrorMsg *msg = add_node_error(g, source_node,
+                            buf_sprintf("redefinition of '%s'", buf_ptr(name)));
+                    add_error_note(g, msg, tld->source_node, buf_sprintf("previous definition is here"));
+                    variable_entry->var_type = g->builtin_types.entry_invalid;
                 }
             }
         }
@@ -7649,39 +7639,6 @@ bool type_can_fail(ZigType *type_entry) {
 bool fn_type_can_fail(FnTypeId *fn_type_id) {
     return type_can_fail(fn_type_id->return_type);
 }
-
-// ErrorNone - result pointer has the type
-// ErrorOverflow - an integer primitive type has too large a bit width
-// ErrorPrimitiveTypeNotFound - result pointer unchanged
-Error get_primitive_type(CodeGen *g, Buf *name, ZigType **result) {
-    if (buf_len(name) >= 2) {
-        uint8_t first_c = buf_ptr(name)[0];
-        if (first_c == 'i' || first_c == 'u') {
-            for (size_t i = 1; i < buf_len(name); i += 1) {
-                uint8_t c = buf_ptr(name)[i];
-                if (c < '0' || c > '9') {
-                    goto not_integer;
-                }
-            }
-            bool is_signed = (first_c == 'i');
-            unsigned long int bit_count = strtoul(buf_ptr(name) + 1, nullptr, 10);
-            // strtoul returns ULONG_MAX on errors, so this comparison catches that as well.
-            if (bit_count >= 65536) return ErrorOverflow;
-            *result = get_int_type(g, is_signed, bit_count);
-            return ErrorNone;
-        }
-    }
-
-not_integer:
-
-    auto primitive_table_entry = g->primitive_type_table.maybe_get(name);
-    if (primitive_table_entry == nullptr)
-        return ErrorPrimitiveTypeNotFound;
-
-    *result = primitive_table_entry->value;
-    return ErrorNone;
-}
-
 Error file_fetch(CodeGen *g, Buf *resolved_path, Buf *contents) {
     if (g->enable_cache) {
         return cache_add_file_fetch(&g->cache_hash, resolved_path, contents);

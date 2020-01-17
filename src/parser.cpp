@@ -143,7 +143,7 @@ static void ast_error(ParseContext *pc, Token *token, const char *format, ...) {
 
 ATTRIBUTE_NORETURN
 static void ast_invalid_token_error(ParseContext *pc, Token *token) {
-    ast_error(pc, token, "invalid token: '%s'", token_name(token->id));
+    ast_error(pc, token, "invalid token: '%s'", token_name(token));
 }
 
 static AstNode *ast_create_node_no_line_info(ParseContext *pc, NodeType type) {
@@ -194,7 +194,7 @@ static Token *eat_token_if(ParseContext *pc, TokenId id) {
 static Token *expect_token(ParseContext *pc, TokenId id) {
     Token *res = eat_token(pc);
     if (res->id != id)
-        ast_error(pc, res, "expected token '%s', found '%s'", token_name(id), token_name(res->id));
+        ast_error(pc, res, "expected token '%s', found '%s'", token_name_id(id), token_name(res));
 
     return res;
 }
@@ -206,7 +206,7 @@ static void put_back_token(ParseContext *pc) {
 static Buf *token_buf(Token *token) {
     if (token == nullptr)
         return nullptr;
-    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdSymbol);
+    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdPrimitiveType || token->id == TokenIdSymbol);
     return &token->data.str_lit.str;
 }
 
@@ -958,7 +958,7 @@ static AstNode *ast_parse_if_statement(ParseContext *pc) {
 
     if (body == nullptr) {
         Token *tok = eat_token(pc);
-        ast_error(pc, tok, "expected if body, found '%s'", token_name(tok->id));
+        ast_error(pc, tok, "expected if body, found '%s'", token_name(tok));
     }
 
     Token *err_payload = nullptr;
@@ -1067,7 +1067,7 @@ static AstNode *ast_parse_for_statement(ParseContext *pc) {
 
     if (body == nullptr) {
         Token *tok = eat_token(pc);
-        ast_error(pc, tok, "expected loop body, found '%s'", token_name(tok->id));
+        ast_error(pc, tok, "expected loop body, found '%s'", token_name(tok));
     }
 
     AstNode *else_body = nullptr;
@@ -1101,7 +1101,7 @@ static AstNode *ast_parse_while_statement(ParseContext *pc) {
 
     if (body == nullptr) {
         Token *tok = eat_token(pc);
-        ast_error(pc, tok, "expected loop body, found '%s'", token_name(tok->id));
+        ast_error(pc, tok, "expected loop body, found '%s'", token_name(tok));
     }
 
     Token *err_payload = nullptr;
@@ -1582,12 +1582,14 @@ static AstNode *ast_parse_suffix_expr(ParseContext *pc) {
 //      / KEYWORD_error DOT IDENTIFIER
 //      / KEYWORD_false
 //      / KEYWORD_null
-//      / KEYWORD_promise
 //      / KEYWORD_true
 //      / KEYWORD_undefined
 //      / KEYWORD_unreachable
 //      / STRINGLITERAL
 //      / SwitchExpr
+//      / PRIMITIVETYPE
+//      / INTTYPE
+//      / UNDERSCORE
 static AstNode *ast_parse_primary_type_expr(ParseContext *pc) {
     // TODO: This is not in line with the grammar.
     //       Because the prev stage 1 tokenizer does not parse
@@ -1733,6 +1735,25 @@ static AstNode *ast_parse_primary_type_expr(ParseContext *pc) {
     AstNode *switch_expr = ast_parse_switch_expr(pc);
     if (switch_expr != nullptr)
         return switch_expr;
+
+    Token *primitive_type = eat_token_if(pc, TokenIdPrimitiveType);
+    if (primitive_type != nullptr) {
+        AstNode *res = ast_create_node(pc, NodeTypePrimitiveType, primitive_type);
+        res->data.primitive_type.name = token_buf(primitive_type);
+        return res;
+    }
+
+    Token *int_type = eat_token_if(pc, TokenIdIntType);
+    if (int_type != nullptr) {
+        AstNode *res = ast_create_node(pc, NodeTypeIntType, int_type);
+        res->data.int_type.bit_count = int_type->data.int_type.bit_count;
+        res->data.int_type.is_signed = int_type->data.int_type.is_signed;
+        return res;
+    }
+
+    Token *underscore = eat_token_if(pc, TokenIdUnderscore);
+    if (underscore != nullptr)
+        return ast_create_node(pc, NodeTypeUnderscore, underscore);
 
     return nullptr;
 }
@@ -2274,23 +2295,27 @@ static AstNode *ast_parse_for_prefix(ParseContext *pc) {
     return res;
 }
 
-// Payload <- PIPE IDENTIFIER PIPE
+// Payload <- PIPE (IDENTIFIER / UNDERSCORE) PIPE
 static Token *ast_parse_payload(ParseContext *pc) {
     if (eat_token_if(pc, TokenIdBinOr) == nullptr)
         return nullptr;
 
-    Token *res = expect_token(pc, TokenIdSymbol);
+    Token *res = eat_token_if(pc, TokenIdUnderscore);
+    if (res == nullptr)
+        res = expect_token(pc, TokenIdSymbol);
     expect_token(pc, TokenIdBinOr);
     return res;
 }
 
-// PtrPayload <- PIPE ASTERISK? IDENTIFIER PIPE
+// PtrPayload <- PIPE ASTERISK? (IDENTIFIER / UNDERSCORE) PIPE
 static Optional<PtrPayload> ast_parse_ptr_payload(ParseContext *pc) {
     if (eat_token_if(pc, TokenIdBinOr) == nullptr)
         return Optional<PtrPayload>::none();
 
     Token *asterisk = eat_token_if(pc, TokenIdStar);
-    Token *payload = expect_token(pc, TokenIdSymbol);
+    Token *payload = eat_token_if(pc, TokenIdUnderscore);
+    if (payload == nullptr)
+        payload = expect_token(pc, TokenIdSymbol);
     expect_token(pc, TokenIdBinOr);
 
     PtrPayload res;
@@ -2305,7 +2330,9 @@ static Optional<PtrIndexPayload> ast_parse_ptr_index_payload(ParseContext *pc) {
         return Optional<PtrIndexPayload>::none();
 
     Token *asterisk = eat_token_if(pc, TokenIdStar);
-    Token *payload = expect_token(pc, TokenIdSymbol);
+    Token *payload = eat_token_if(pc, TokenIdUnderscore);
+    if (payload == nullptr)
+        payload = expect_token(pc, TokenIdSymbol);
     Token *index = nullptr;
     if (eat_token_if(pc, TokenIdComma) != nullptr)
         index = expect_token(pc, TokenIdSymbol);
@@ -2630,11 +2657,8 @@ static AstNode *ast_parse_prefix_type_op(ParseContext *pc) {
 
     Token *arr_init_lbracket = eat_token_if(pc, TokenIdLBracket);
     if (arr_init_lbracket != nullptr) {
-        Token *underscore = eat_token_if(pc, TokenIdSymbol);
+        Token *underscore = eat_token_if(pc, TokenIdUnderscore);
         if (underscore == nullptr) {
-            put_back_token(pc);
-        } else if (!buf_eql_str(token_buf(underscore), "_")) {
-            put_back_token(pc);
             put_back_token(pc);
         } else {
             AstNode *sentinel = nullptr;
@@ -3191,6 +3215,9 @@ void ast_visit_node_children(AstNode *node, void (*visit)(AstNode **, void *cont
             break;
         case NodeTypeEnumLiteral:
         case NodeTypeVarFieldType:
+        case NodeTypePrimitiveType:
+        case NodeTypeIntType:
+        case NodeTypeUnderscore:
             break;
     }
 }
