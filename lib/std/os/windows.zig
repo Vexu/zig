@@ -932,7 +932,7 @@ pub fn SetFileTime(
 
 pub fn peb() *PEB {
     switch (builtin.arch) {
-        .i386 => {
+        .@"i386" => {
             return asm (
                 \\ mov %%fs:0x18, %[ptr]
                 \\ mov %%ds:0x30(%[ptr]), %[ptr]

@@ -30,7 +30,7 @@ pub fn zig_probe_stack() callconv(.Naked) void {
                 \\        ret
             );
         },
-        .i386 => {
+        .@"i386" => {
             // %eax = probe length, %esp = stack pointer
             asm volatile (
                 \\        push   %%ecx
@@ -82,7 +82,7 @@ fn win_probe_stack_only() void {
                 \\         ret
             );
         },
-        .i386 => {
+        .@"i386" => {
             asm volatile (
                 \\         push   %%ecx
                 \\         push   %%eax
@@ -137,7 +137,7 @@ fn win_probe_stack_adjust_sp() void {
                 \\         ret
             );
         },
-        .i386 => {
+        .@"i386" => {
             asm volatile (
                 \\         push   %%ecx
                 \\         cmp    $0x1000,%%eax
@@ -187,7 +187,7 @@ pub fn _chkstk() callconv(.Naked) void {
 pub fn __chkstk() callconv(.Naked) void {
     @setRuntimeSafety(false);
     switch (builtin.arch) {
-        .i386 => @call(.{ .modifier = .always_inline }, win_probe_stack_adjust_sp, .{}),
+        .@"i386" => @call(.{ .modifier = .always_inline }, win_probe_stack_adjust_sp, .{}),
         .x86_64 => @call(.{ .modifier = .always_inline }, win_probe_stack_only, .{}),
         else => unreachable,
     }

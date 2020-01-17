@@ -94,7 +94,7 @@ const abi_lists = [_]AbiList{
         .path = "x86_64/x32",
     },
     AbiList{
-        .targets = [_]ZigTarget{ZigTarget{ .arch = .i386, .abi = .gnu }},
+        .targets = [_]ZigTarget{ZigTarget{ .arch = .@"i386", .abi = .gnu }},
         .path = "i386",
     },
     AbiList{

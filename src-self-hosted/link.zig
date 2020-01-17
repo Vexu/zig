@@ -288,7 +288,7 @@ fn constructLinkerArgsCoff(ctx: *Context) !void {
     }
 
     switch (ctx.comp.target.getArch()) {
-        .i386 => try ctx.args.append("-MACHINE:X86"),
+        .@"i386" => try ctx.args.append("-MACHINE:X86"),
         .x86_64 => try ctx.args.append("-MACHINE:X64"),
         .aarch64 => try ctx.args.append("-MACHINE:ARM"),
         else => return error.UnsupportedLinkArchitecture,
@@ -535,7 +535,7 @@ const DarwinPlatform = struct {
 
         if (result.kind == .IPhoneOS) {
             switch (comp.target.getArch()) {
-                .i386,
+                .@"i386",
                 .x86_64,
                 => result.kind = .IPhoneOSSimulator,
                 else => {},

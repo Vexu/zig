@@ -80,7 +80,7 @@ pub const Target = union(enum) {
         tcele,
         thumb: Arm32,
         thumbeb: Arm32,
-        i386,
+        @"i386",
         x86_64,
         xcore,
         nvptx,
@@ -166,7 +166,7 @@ pub const Target = union(enum) {
                 .tcele => ._NONE,
                 .thumb => ._ARM,
                 .thumbeb => ._ARM,
-                .i386 => ._386,
+                .@"i386" => ._386,
                 .xcore => ._XCORE,
                 .nvptx => ._NONE,
                 .amdil => ._NONE,
@@ -228,7 +228,7 @@ pub const Target = union(enum) {
                 .r600,
                 .riscv32,
                 .riscv64,
-                .i386,
+                .@"i386",
                 .x86_64,
                 .wasm32,
                 .wasm64,
@@ -332,7 +332,7 @@ pub const Target = union(enum) {
     /// Returned slice must be freed by the caller.
     pub fn vcpkgTriplet(allocator: *mem.Allocator, target: Target, linkage: std.build.VcpkgLinkage) ![]const u8 {
         const arch = switch (target.getArch()) {
-            .i386 => "x86",
+            .@"i386" => "x86",
             .x86_64 => "x64",
 
             .arm,
@@ -683,7 +683,7 @@ pub const Target = union(enum) {
             .tcele,
             .thumb,
             .thumbeb,
-            .i386,
+            .@"i386",
             .xcore,
             .nvptx,
             .amdil,
@@ -743,7 +743,7 @@ pub const Target = union(enum) {
                 .aarch64_be => Executor{ .qemu = "qemu-aarch64_be" },
                 .arm => Executor{ .qemu = "qemu-arm" },
                 .armeb => Executor{ .qemu = "qemu-armeb" },
-                .i386 => Executor{ .qemu = "qemu-i386" },
+                .@"i386" => Executor{ .qemu = "qemu-i386" },
                 .mips => Executor{ .qemu = "qemu-mips" },
                 .mipsel => Executor{ .qemu = "qemu-mipsel" },
                 .mips64 => Executor{ .qemu = "qemu-mips64" },

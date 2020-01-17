@@ -48,7 +48,7 @@ const TLSVariant = enum {
 
 const tls_variant = switch (builtin.arch) {
     .arm, .armeb, .aarch64, .aarch64_be, .riscv32, .riscv64, .mipsel => TLSVariant.VariantI,
-    .x86_64, .i386 => TLSVariant.VariantII,
+    .x86_64, .@"i386" => TLSVariant.VariantII,
     else => @compileError("undefined tls_variant for this architecture"),
 };
 
@@ -117,7 +117,7 @@ pub var tls_image: ?TLSImage = null;
 
 pub fn setThreadPointer(addr: usize) void {
     switch (builtin.arch) {
-        .i386 => {
+        .@"i386" => {
             var user_desc = std.os.linux.user_desc{
                 .entry_number = tls_image.?.gdt_entry_number,
                 .base_addr = addr,

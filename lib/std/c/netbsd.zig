@@ -26,7 +26,7 @@ pub const pthread_cond_t = extern struct {
 };
 const pthread_spin_t = if (builtin.arch == .arm or .arch == .powerpc) c_int else u8;
 const padded_spin_t = switch (builtin.arch) {
-    .sparc, .sparcel, .sparcv9, .i386, .x86_64, .le64 => u32,
+    .sparc, .sparcel, .sparcv9, .@"i386", .x86_64, .le64 => u32,
     else => spin_t,
 };
 

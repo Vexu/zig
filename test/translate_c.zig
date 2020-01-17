@@ -1005,7 +1005,7 @@ pub fn addCases(cases: *tests.TranslateCContext) void {
     });
 
     cases.addWithTarget("Calling convention", tests.Target{
-        .Cross = .{ .os = .linux, .arch = .i386, .abi = .none },
+        .Cross = .{ .os = .linux, .arch = .@"i386", .abi = .none },
     },
         \\void __attribute__((fastcall)) foo1(float *a);
         \\void __attribute__((stdcall)) foo2(float *a);

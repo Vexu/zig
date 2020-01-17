@@ -315,10 +315,10 @@ pub const Thread = struct {
                 os.CLONE_DETACHED;
             var newtls: usize = undefined;
             // This structure is only needed when targeting i386
-            var user_desc: if (builtin.arch == .i386) os.linux.user_desc else void = undefined;
+            var user_desc: if (builtin.arch == .@"i386") os.linux.user_desc else void = undefined;
 
             if (os.linux.tls.tls_image) |tls_img| {
-                if (builtin.arch == .i386) {
+                if (builtin.arch == .@"i386") {
                     user_desc = os.linux.user_desc{
                         .entry_number = tls_img.gdt_entry_number,
                         .base_addr = os.linux.tls.copyTLS(mmap_addr + tls_start_offset),

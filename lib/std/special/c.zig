@@ -195,7 +195,7 @@ fn __stack_chk_fail() callconv(.C) noreturn {
 // across .o file boundaries. fix comptime @ptrCast of nakedcc functions.
 fn clone() callconv(.Naked) void {
     switch (builtin.arch) {
-        .i386 => {
+        .@"i386" => {
             // __clone(func, stack, flags, arg, ptid, tls, ctid)
             //         +8,   +12,   +16,   +20, +24,  +28, +32
             // syscall(SYS_clone, flags, stack, ptid, tls, ctid)

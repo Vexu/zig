@@ -9,7 +9,7 @@ pub usingnamespace switch (builtin.arch) {
 };
 
 pub usingnamespace switch (builtin.arch) {
-    .i386 => @import("linux/i386.zig"),
+    .@"i386" => @import("linux/i386.zig"),
     .x86_64 => @import("linux/x86_64.zig"),
     .aarch64 => @import("linux/arm64.zig"),
     .arm => @import("linux/arm-eabi.zig"),
@@ -942,7 +942,7 @@ pub const CAP_BLOCK_SUSPEND = 36;
 pub const CAP_AUDIT_READ = 37;
 pub const CAP_LAST_CAP = CAP_AUDIT_READ;
 
-pub fn cap_valid(u8: x) bool {
+pub fn cap_valid(x: u8) bool {
     return x >= 0 and x <= CAP_LAST_CAP;
 }
 
@@ -1021,12 +1021,12 @@ pub fn CPU_COUNT(set: cpu_set_t) cpu_count_t {
 //#define CPU_EQUAL(s1,s2) CPU_EQUAL_S(sizeof(cpu_set_t),s1,s2)
 
 pub const MINSIGSTKSZ = switch (builtin.arch) {
-    .i386, .x86_64, .arm, .mipsel => 2048,
+    .@"i386", .x86_64, .arm, .mipsel => 2048,
     .aarch64 => 5120,
     else => @compileError("MINSIGSTKSZ not defined for this architecture"),
 };
 pub const SIGSTKSZ = switch (builtin.arch) {
-    .i386, .x86_64, .arm, .mipsel => 8192,
+    .@"i386", .x86_64, .arm, .mipsel => 8192,
     .aarch64 => 16384,
     else => @compileError("SIGSTKSZ not defined for this architecture"),
 };

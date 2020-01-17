@@ -146,7 +146,7 @@ pub const Coff = struct {
         var i: u32 = 0;
         blk: while (i < debug_dir_entry_count) : (i += 1) {
             const debug_dir_entry = try in.readStruct(DebugDirectoryEntry);
-            if (debug_dir_entry.type == IMAGE_DEBUG_TYPE_CODEVIEW) {
+            if (debug_dir_entry.@"type" == IMAGE_DEBUG_TYPE_CODEVIEW) {
                 for (self.sections.toSlice()) |*section| {
                     const section_start = section.header.virtual_address;
                     const section_size = section.header.misc.virtual_size;

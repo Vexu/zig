@@ -282,7 +282,7 @@ pub const LibCInstallation = struct {
             const stream = &std.io.BufferOutStream.init(&result_buf).stream;
             try stream.print("{}\\Lib\\{}\\ucrt\\", .{ search.path, search.version });
             switch (builtin.arch) {
-                .i386 => try stream.write("x86"),
+                .@"i386" => try stream.write("x86"),
                 .x86_64 => try stream.write("x64"),
                 .aarch64 => try stream.write("arm"),
                 else => return error.UnsupportedArchitecture,
@@ -360,7 +360,7 @@ pub const LibCInstallation = struct {
             const stream = &std.io.BufferOutStream.init(&result_buf).stream;
             try stream.print("{}\\Lib\\{}\\um\\", .{ search.path, search.version });
             switch (builtin.arch) {
-                .i386 => try stream.write("x86\\"),
+                .@"i386" => try stream.write("x86\\"),
                 .x86_64 => try stream.write("x64\\"),
                 .aarch64 => try stream.write("arm\\"),
                 else => return error.UnsupportedArchitecture,

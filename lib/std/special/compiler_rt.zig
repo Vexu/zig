@@ -12,7 +12,7 @@ comptime {
     const strong_linkage = if (is_test) builtin.GlobalLinkage.Internal else builtin.GlobalLinkage.Strong;
 
     switch (builtin.arch) {
-        .i386, .x86_64 => @export(@import("compiler_rt/stack_probe.zig").zig_probe_stack, .{ .name = "__zig_probe_stack", .linkage = linkage }),
+        .@"i386", .x86_64 => @export(@import("compiler_rt/stack_probe.zig").zig_probe_stack, .{ .name = "__zig_probe_stack", .linkage = linkage }),
         else => {},
     }
 
@@ -257,7 +257,7 @@ comptime {
         }
 
         switch (builtin.arch) {
-            .i386 => {
+            .@"i386" => {
                 // Don't let LLVM apply the stdcall name mangling on those MSVC
                 // builtin functions
                 @export(@import("compiler_rt/aulldiv.zig")._alldiv, .{ .name = "\x01__alldiv", .linkage = strong_linkage });

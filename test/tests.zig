@@ -81,7 +81,7 @@ const test_targets = [_]TestTarget{
         .target = Target{
             .Cross = CrossTarget{
                 .os = .linux,
-                .arch = .i386,
+                .arch = .@"i386",
                 .abi = .none,
             },
         },
@@ -90,7 +90,7 @@ const test_targets = [_]TestTarget{
         .target = Target{
             .Cross = CrossTarget{
                 .os = .linux,
-                .arch = .i386,
+                .arch = .@"i386",
                 .abi = .musl,
             },
         },
@@ -194,7 +194,7 @@ const test_targets = [_]TestTarget{
         .target = Target{
             .Cross = CrossTarget{
                 .os = .windows,
-                .arch = .i386,
+                .arch = .@"i386",
                 .abi = .msvc,
             },
         },
@@ -214,7 +214,7 @@ const test_targets = [_]TestTarget{
         .target = Target{
             .Cross = CrossTarget{
                 .os = .windows,
-                .arch = .i386,
+                .arch = .@"i386",
                 .abi = .gnu,
             },
         },

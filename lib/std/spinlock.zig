@@ -60,7 +60,7 @@ pub const SpinLock = struct {
             switch (builtin.arch) {
                 // these instructions use a memory clobber as they
                 // flush the pipeline of any speculated reads/writes.
-                .i386, .x86_64 => asm volatile ("pause"
+                .@"i386", .x86_64 => asm volatile ("pause"
                     :
                     :
                     : "memory"

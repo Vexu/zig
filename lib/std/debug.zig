@@ -2441,7 +2441,7 @@ fn handleSegfaultLinux(sig: i32, info: *const os.siginfo_t, ctx_ptr: *const c_vo
         else => unreachable,
     }
     switch (builtin.arch) {
-        .i386 => {
+        .@"i386" => {
             const ctx = @ptrCast(*const os.ucontext_t, @alignCast(@alignOf(os.ucontext_t), ctx_ptr));
             const ip = @intCast(usize, ctx.mcontext.gregs[os.REG_EIP]);
             const bp = @intCast(usize, ctx.mcontext.gregs[os.REG_EBP]);

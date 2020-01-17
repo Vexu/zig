@@ -82,7 +82,7 @@ pub fn getDynamicLinkerPath(self: Target) ?[]const u8 {
                 else => {},
             }
             switch (arch) {
-                .i386,
+                .@"i386",
                 .sparc,
                 .sparcel,
                 => return "/lib/ld-linux.so.2",
