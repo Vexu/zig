@@ -672,7 +672,7 @@ struct AstNodeFnDef {
 };
 
 struct AstNodeParamDecl {
-    Buf *name;
+    Buf *name; // null if discarded
     AstNode *type;
     Token *var_token;
     Buf doc_comments;
@@ -891,17 +891,18 @@ struct AstNodeIfBoolExpr {
 };
 
 struct AstNodeTryExpr {
-    Buf *var_symbol;
+    AstNode *var_symbol;
     bool var_is_ptr;
     AstNode *target_node;
     AstNode *then_node;
     AstNode *else_node;
-    Buf *err_symbol;
+    AstNode *err_symbol;
 };
 
 struct AstNodeTestExpr {
-    Buf *var_symbol;
+    AstNode *var_symbol;
     bool var_is_ptr;
+    bool var_is_discarded;
     AstNode *target_node;
     AstNode *then_node;
     AstNode *else_node; // null, block node, or other if expr node
@@ -910,19 +911,21 @@ struct AstNodeTestExpr {
 struct AstNodeWhileExpr {
     Buf *name;
     AstNode *condition;
-    Buf *var_symbol;
+    AstNode *var_symbol;
+    bool var_is_discarded;
     bool var_is_ptr;
     AstNode *continue_expr;
     AstNode *body;
     AstNode *else_node;
-    Buf *err_symbol;
+    AstNode *err_symbol;
+    bool err_is_discarded;
     bool is_inline;
 };
 
 struct AstNodeForExpr {
     Buf *name;
     AstNode *array_expr;
-    AstNode *elem_node; // always a symbol
+    AstNode *elem_node; // always a symbol, null if discarded
     AstNode *index_node; // always a symbol, might be null
     AstNode *body;
     AstNode *else_node; // can be null
@@ -939,6 +942,8 @@ struct AstNodeSwitchProng {
     ZigList<AstNode *> items;
     AstNode *var_symbol;
     AstNode *expr;
+    bool is_else;
+    bool is_underscore;
     bool var_is_ptr;
     bool any_items_are_range;
 };
@@ -953,14 +958,14 @@ struct AstNodeCompTime {
 };
 
 struct AsmOutput {
-    Buf *asm_symbolic_name;
+    Buf *asm_symbolic_name; // null if discarded
     Buf *constraint;
     Buf *variable_name;
     AstNode *return_type; // null unless "=r" and return
 };
 
 struct AsmInput {
-    Buf *asm_symbolic_name;
+    Buf *asm_symbolic_name; // null if discarded
     Buf *constraint;
     AstNode *expr;
 };
@@ -1026,7 +1031,7 @@ struct AstNodeErrorSetDecl {
 };
 
 struct AstNodeStructField {
-    Buf *name;
+    Buf *name; // null if discarded
     AstNode *type;
     AstNode *value;
     // populated if the "align(A)" is present

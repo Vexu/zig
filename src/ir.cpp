@@ -4368,10 +4368,9 @@ static ZigVar *create_local_var(CodeGen *codegen, AstNode *node, Scope *parent_s
 static ZigVar *ir_create_var(IrBuilder *irb, AstNode *node, Scope *scope, Buf *name,
         bool src_is_const, bool gen_is_const, bool is_shadowable, IrInstruction *is_comptime)
 {
-    bool is_underscored = name ? buf_eql_str(name, "_") : false;
     ZigVar *var = create_local_var(irb->codegen, node, scope,
-            (is_underscored ? nullptr : name), src_is_const, gen_is_const,
-            (is_underscored ? true : is_shadowable), is_comptime, false);
+            name, src_is_const, gen_is_const,
+            is_shadowable, is_comptime, false);
     if (is_comptime != nullptr || gen_is_const) {
         var->mem_slot_index = exec_next_mem_slot(irb->exec);
         var->owner_exec = irb->exec;
@@ -7003,17 +7002,18 @@ static IrInstruction *ir_gen_while_expr(IrBuilder *irb, Scope *scope, AstNode *n
     ir_build_br(irb, scope, node, cond_block, is_comptime);
 
     Scope *subexpr_scope = create_runtime_scope(irb->codegen, node, scope, is_comptime);
-    Buf *var_symbol = node->data.while_expr.var_symbol;
-    Buf *err_symbol = node->data.while_expr.err_symbol;
-    if (err_symbol != nullptr) {
+    AstNode *var_node = node->data.while_expr.var_symbol;
+    AstNode *err_node = node->data.while_expr.err_symbol;
+    bool var_is_discarded = node->data.while_expr.var_is_discarded;
+    bool err_is_discarded = node->data.while_expr.err_is_discarded;
+    if (err_node != nullptr || err_is_discarded) {
         ir_set_cursor_at_end_and_append_block(irb, cond_block);
 
         Scope *payload_scope;
-        AstNode *symbol_node = node; // TODO make more accurate
         ZigVar *payload_var;
-        if (var_symbol) {
+        if (var_node) {
             // TODO make it an error to write to payload variable
-            payload_var = ir_create_var(irb, symbol_node, subexpr_scope, var_symbol,
+            payload_var = ir_create_var(irb, var_node, subexpr_scope, var_node->data.symbol_expr.symbol,
                     true, false, false, is_comptime);
             payload_scope = payload_var->child_scope;
         } else {
@@ -7041,12 +7041,12 @@ static IrInstruction *ir_gen_while_expr(IrBuilder *irb, Scope *scope, AstNode *n
                 is_comptime);
 
         ir_set_cursor_at_end_and_append_block(irb, body_block);
-        if (var_symbol) {
-            IrInstruction *payload_ptr = ir_build_unwrap_err_payload(irb, payload_scope, symbol_node,
+        if (var_node) {
+            IrInstruction *payload_ptr = ir_build_unwrap_err_payload(irb, payload_scope, var_node,
                     err_val_ptr, false, false);
             IrInstruction *var_ptr = node->data.while_expr.var_is_ptr ?
-                ir_build_ref(irb, payload_scope, symbol_node, payload_ptr, true, false) : payload_ptr;
-            ir_build_var_decl_src(irb, payload_scope, symbol_node, payload_var, nullptr, var_ptr);
+                ir_build_ref(irb, payload_scope, var_node, payload_ptr, true, false) : payload_ptr;
+            ir_build_var_decl_src(irb, payload_scope, var_node, payload_var, nullptr, var_ptr);
         }
 
         ZigList<IrInstruction *> incoming_values = {0};
@@ -7088,12 +7088,19 @@ static IrInstruction *ir_gen_while_expr(IrBuilder *irb, Scope *scope, AstNode *n
         assert(else_node != nullptr);
 
         // TODO make it an error to write to error variable
-        AstNode *err_symbol_node = else_node; // TODO make more accurate
-        ZigVar *err_var = ir_create_var(irb, err_symbol_node, scope, err_symbol,
-                true, false, false, is_comptime);
+        ZigVar *err_var;
+        if (err_node) {
+            // TODO make it an error to write to payload variable
+            err_var = ir_create_var(irb, err_node, subexpr_scope, err_node->data.symbol_expr.symbol,
+                    true, false, false, is_comptime);
+        } else {
+            err_node = node;
+            err_var = ir_create_var(irb, err_node, subexpr_scope, nullptr,
+                    true, false, true, is_comptime);
+        }
         Scope *err_scope = err_var->child_scope;
-        IrInstruction *err_ptr = ir_build_unwrap_err_code(irb, err_scope, err_symbol_node, err_val_ptr);
-        ir_build_var_decl_src(irb, err_scope, symbol_node, err_var, nullptr, err_ptr);
+        IrInstruction *err_ptr = ir_build_unwrap_err_code(irb, err_scope, err_node, err_val_ptr);
+        ir_build_var_decl_src(irb, err_scope, err_node, err_var, nullptr, err_ptr);
 
         if (peer_parent->peers.length != 0) {
             peer_parent->peers.last()->next_bb = else_block;
@@ -7121,14 +7128,19 @@ static IrInstruction *ir_gen_while_expr(IrBuilder *irb, Scope *scope, AstNode *n
         IrInstruction *phi = ir_build_phi(irb, scope, node, incoming_blocks.length,
                 incoming_blocks.items, incoming_values.items, peer_parent);
         return ir_expr_wrap(irb, scope, phi, result_loc);
-    } else if (var_symbol != nullptr) {
+    } else if (var_node != nullptr || var_is_discarded) {
         ir_set_cursor_at_end_and_append_block(irb, cond_block);
         Scope *subexpr_scope = create_runtime_scope(irb->codegen, node, scope, is_comptime);
         // TODO make it an error to write to payload variable
-        AstNode *symbol_node = node; // TODO make more accurate
-
-        ZigVar *payload_var = ir_create_var(irb, symbol_node, subexpr_scope, var_symbol,
+        ZigVar *payload_var;
+        if (var_node != nullptr) {
+            payload_var = ir_create_var(irb, var_node, subexpr_scope, var_node->data.symbol_expr.symbol,
                 true, false, false, is_comptime);
+        } else {
+            var_node = node;
+            payload_var = ir_create_var(irb, var_node, subexpr_scope, nullptr,
+                true, false, true, is_comptime);
+        }
         Scope *child_scope = payload_var->child_scope;
         IrInstruction *maybe_val_ptr = ir_gen_node_extra(irb, node->data.while_expr.condition, subexpr_scope,
                 LValPtr, nullptr);
@@ -7152,10 +7164,10 @@ static IrInstruction *ir_gen_while_expr(IrBuilder *irb, Scope *scope, AstNode *n
                 is_comptime);
 
         ir_set_cursor_at_end_and_append_block(irb, body_block);
-        IrInstruction *payload_ptr = ir_build_optional_unwrap_ptr(irb, child_scope, symbol_node, maybe_val_ptr, false, false);
+        IrInstruction *payload_ptr = ir_build_optional_unwrap_ptr(irb, child_scope, var_node, maybe_val_ptr, false, false);
         IrInstruction *var_ptr = node->data.while_expr.var_is_ptr ?
-            ir_build_ref(irb, child_scope, symbol_node, payload_ptr, true, false) : payload_ptr;
-        ir_build_var_decl_src(irb, child_scope, symbol_node, payload_var, nullptr, var_ptr);
+            ir_build_ref(irb, child_scope, var_node, payload_ptr, true, false) : payload_ptr;
+        ir_build_var_decl_src(irb, child_scope, var_node, payload_var, nullptr, var_ptr);
 
         ZigList<IrInstruction *> incoming_values = {0};
         ZigList<IrBasicBlock *> incoming_blocks = {0};
@@ -7327,12 +7339,6 @@ static IrInstruction *ir_gen_for_expr(IrBuilder *irb, Scope *parent_scope, AstNo
     AstNode *body_node = node->data.for_expr.body;
     AstNode *else_node = node->data.for_expr.else_node;
 
-    if (!elem_node) {
-        add_node_error(irb->codegen, node, buf_sprintf("for loop expression missing element parameter"));
-        return irb->codegen->invalid_instruction;
-    }
-    assert(elem_node->type == NodeTypeSymbol);
-
     ScopeExpr *spill_scope = create_expr_scope(irb->codegen, node, parent_scope);
 
     IrInstruction *array_val_ptr = ir_gen_node_extra(irb, array_node, &spill_scope->base, LValPtr, nullptr);
@@ -7390,13 +7396,21 @@ static IrInstruction *ir_gen_for_expr(IrBuilder *irb, Scope *parent_scope, AstNo
     IrInstruction *elem_ptr = ir_build_elem_ptr(irb, elem_ptr_scope, node, array_val_ptr, index_val, false,
             PtrLenSingle, nullptr);
     // TODO make it an error to write to element variable or i variable.
-    Buf *elem_var_name = elem_node->data.symbol_expr.symbol;
-    ZigVar *elem_var = ir_create_var(irb, elem_node, parent_scope, elem_var_name, true, false, false, is_comptime);
+    AstNode *elem_var_source_node;
+    ZigVar *elem_var;
+    if (elem_node) {
+        elem_var_source_node = elem_node;
+        Buf *elem_var_name = elem_node->data.symbol_expr.symbol;
+        elem_var = ir_create_var(irb, elem_node, parent_scope, elem_var_name, true, false, false, is_comptime);
+    } else {
+        elem_var_source_node = node;
+        elem_var = ir_create_var(irb, node, parent_scope, nullptr, true, false, true, is_comptime);
+    }
     Scope *child_scope = elem_var->child_scope;
 
     IrInstruction *var_ptr = node->data.for_expr.elem_is_ptr ?
-        ir_build_ref(irb, &spill_scope->base, elem_node, elem_ptr, true, false) : elem_ptr;
-    ir_build_var_decl_src(irb, parent_scope, elem_node, elem_var, nullptr, var_ptr);
+        ir_build_ref(irb, &spill_scope->base, elem_var_source_node, elem_ptr, true, false) : elem_ptr;
+    ir_build_var_decl_src(irb, parent_scope, elem_var_source_node, elem_var, nullptr, var_ptr);
 
     ZigList<IrInstruction *> incoming_values = {0};
     ZigList<IrBasicBlock *> incoming_blocks = {0};
@@ -7773,7 +7787,7 @@ static IrInstruction *ir_gen_if_optional_expr(IrBuilder *irb, Scope *scope, AstN
 {
     assert(node->type == NodeTypeIfOptional);
 
-    Buf *var_symbol = node->data.test_expr.var_symbol;
+    AstNode *var_node = node->data.test_expr.var_symbol;
     AstNode *expr_node = node->data.test_expr.target_node;
     AstNode *then_node = node->data.test_expr.then_node;
     AstNode *else_node = node->data.test_expr.else_node;
@@ -7806,15 +7820,15 @@ static IrInstruction *ir_gen_if_optional_expr(IrBuilder *irb, Scope *scope, AstN
 
     Scope *subexpr_scope = create_runtime_scope(irb->codegen, node, scope, is_comptime);
     Scope *var_scope;
-    if (var_symbol) {
+    if (var_node) {
         bool is_shadowable = false;
         bool is_const = true;
-        ZigVar *var = ir_create_var(irb, node, subexpr_scope,
-                var_symbol, is_const, is_const, is_shadowable, is_comptime);
+        ZigVar *var = ir_create_var(irb, var_node, subexpr_scope,
+                var_node->data.symbol_expr.symbol, is_const, is_const, is_shadowable, is_comptime);
 
-        IrInstruction *payload_ptr = ir_build_optional_unwrap_ptr(irb, subexpr_scope, node, maybe_val_ptr, false, false);
-        IrInstruction *var_ptr = var_is_ptr ? ir_build_ref(irb, subexpr_scope, node, payload_ptr, true, false) : payload_ptr;
-        ir_build_var_decl_src(irb, subexpr_scope, node, var, nullptr, var_ptr);
+        IrInstruction *payload_ptr = ir_build_optional_unwrap_ptr(irb, subexpr_scope, var_node, maybe_val_ptr, false, false);
+        IrInstruction *var_ptr = var_is_ptr ? ir_build_ref(irb, subexpr_scope, var_node, payload_ptr, true, false) : payload_ptr;
+        ir_build_var_decl_src(irb, subexpr_scope, var_node, var, nullptr, var_ptr);
         var_scope = var->child_scope;
     } else {
         var_scope = subexpr_scope;
@@ -7863,8 +7877,8 @@ static IrInstruction *ir_gen_if_err_expr(IrBuilder *irb, Scope *scope, AstNode *
     AstNode *else_node = node->data.if_err_expr.else_node;
     bool var_is_ptr = node->data.if_err_expr.var_is_ptr;
     bool var_is_const = true;
-    Buf *var_symbol = node->data.if_err_expr.var_symbol;
-    Buf *err_symbol = node->data.if_err_expr.err_symbol;
+    AstNode *var_node = node->data.if_err_expr.var_symbol;
+    AstNode *err_node = node->data.if_err_expr.err_symbol;
 
     IrInstruction *err_val_ptr = ir_gen_node_extra(irb, target_node, scope, LValPtr, nullptr);
     if (err_val_ptr == irb->codegen->invalid_instruction)
@@ -7888,16 +7902,16 @@ static IrInstruction *ir_gen_if_err_expr(IrBuilder *irb, Scope *scope, AstNode *
 
     Scope *subexpr_scope = create_runtime_scope(irb->codegen, node, scope, is_comptime);
     Scope *var_scope;
-    if (var_symbol) {
+    if (var_node) {
         bool is_shadowable = false;
         IrInstruction *var_is_comptime = force_comptime ? ir_build_const_bool(irb, subexpr_scope, node, true) : ir_build_test_comptime(irb, subexpr_scope, node, err_val);
-        ZigVar *var = ir_create_var(irb, node, subexpr_scope,
-                var_symbol, var_is_const, var_is_const, is_shadowable, var_is_comptime);
+        ZigVar *var = ir_create_var(irb, var_node, subexpr_scope,
+                var_node->data.symbol_expr.symbol, var_is_const, var_is_const, is_shadowable, var_is_comptime);
 
-        IrInstruction *payload_ptr = ir_build_unwrap_err_payload(irb, subexpr_scope, node, err_val_ptr, false, false);
+        IrInstruction *payload_ptr = ir_build_unwrap_err_payload(irb, subexpr_scope, var_node, err_val_ptr, false, false);
         IrInstruction *var_ptr = var_is_ptr ?
-            ir_build_ref(irb, subexpr_scope, node, payload_ptr, true, false) : payload_ptr;
-        ir_build_var_decl_src(irb, subexpr_scope, node, var, nullptr, var_ptr);
+            ir_build_ref(irb, subexpr_scope, var_node, payload_ptr, true, false) : payload_ptr;
+        ir_build_var_decl_src(irb, subexpr_scope, var_node, var, nullptr, var_ptr);
         var_scope = var->child_scope;
     } else {
         var_scope = subexpr_scope;
@@ -7915,14 +7929,14 @@ static IrInstruction *ir_gen_if_err_expr(IrBuilder *irb, Scope *scope, AstNode *
     IrInstruction *else_expr_result;
     if (else_node) {
         Scope *err_var_scope;
-        if (err_symbol) {
+        if (err_node) {
             bool is_shadowable = false;
             bool is_const = true;
-            ZigVar *var = ir_create_var(irb, node, subexpr_scope,
-                    err_symbol, is_const, is_const, is_shadowable, is_comptime);
+            ZigVar *var = ir_create_var(irb, err_node, subexpr_scope,
+                    err_node->data.symbol_expr.symbol, is_const, is_const, is_shadowable, is_comptime);
 
-            IrInstruction *err_ptr = ir_build_unwrap_err_code(irb, subexpr_scope, node, err_val_ptr);
-            ir_build_var_decl_src(irb, subexpr_scope, node, var, nullptr, err_ptr);
+            IrInstruction *err_ptr = ir_build_unwrap_err_code(irb, subexpr_scope, err_node, err_val_ptr);
+            ir_build_var_decl_src(irb, subexpr_scope, err_node, var, nullptr, err_ptr);
             err_var_scope = var->child_scope;
         } else {
             err_var_scope = subexpr_scope;
@@ -8131,7 +8145,7 @@ static IrInstruction *ir_gen_switch_expr(IrBuilder *irb, Scope *scope, AstNode *
 
             ir_set_cursor_at_end_and_append_block(irb, range_block_no);
         } else {
-            if (prong_item_count == 0) {
+            if (prong_node->data.switch_prong.is_else) {
                 if (else_prong) {
                     ErrorMsg *msg = add_node_error(irb->codegen, prong_node,
                             buf_sprintf("multiple else prongs in switch expression"));
@@ -8140,9 +8154,7 @@ static IrInstruction *ir_gen_switch_expr(IrBuilder *irb, Scope *scope, AstNode *
                     return irb->codegen->invalid_instruction;
                 }
                 else_prong = prong_node;
-            } else if (prong_item_count == 1 && 
-                    prong_node->data.switch_prong.items.at(0)->type == NodeTypeSymbol &&
-                    buf_eql_str(prong_node->data.switch_prong.items.at(0)->data.symbol_expr.symbol, "_")) {
+            } else if (prong_node->data.switch_prong.is_underscore) {
                 if (underscore_prong) {
                     ErrorMsg *msg = add_node_error(irb->codegen, prong_node,
                             buf_sprintf("multiple '_' prongs in switch expression"));
@@ -8187,11 +8199,9 @@ static IrInstruction *ir_gen_switch_expr(IrBuilder *irb, Scope *scope, AstNode *
     for (size_t prong_i = 0; prong_i < prong_count; prong_i += 1) {
         AstNode *prong_node = node->data.switch_expr.prongs.at(prong_i);
         size_t prong_item_count = prong_node->data.switch_prong.items.length;
-        if (prong_item_count == 0)
-            continue;
         if (prong_node->data.switch_prong.any_items_are_range)
             continue;
-        if (underscore_prong == prong_node)
+        if (prong_node->data.switch_prong.is_else || prong_node->data.switch_prong.is_underscore)
             continue;
 
         ResultLocPeer *this_peer_result_loc = create_peer_result(peer_parent);
@@ -26493,8 +26503,6 @@ static IrInstruction *ir_analyze_instruction_check_switch_prongs(IrAnalyze *ira,
             }
             for (uint32_t i = 0; i < switch_type->data.enumeration.src_field_count; i += 1) {
                 TypeEnumField *enum_field = &switch_type->data.enumeration.fields[i];
-                if (buf_eql_str(enum_field->name, "_"))
-                    continue;
 
                 auto entry = field_prev_uses.maybe_get(enum_field->value);
                 if (!entry) {

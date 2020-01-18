@@ -972,7 +972,9 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
                 render_node_grouped(ar, node->data.while_expr.condition);
                 fprintf(ar->f, ") ");
                 if (node->data.while_expr.var_symbol) {
-                    fprintf(ar->f, "|%s| ", buf_ptr(node->data.while_expr.var_symbol));
+                    fprintf(ar->f, "|%s| ", buf_ptr(node->data.while_expr.var_symbol->data.symbol_expr.symbol));
+                } else if (node->data.while_expr.var_is_discarded) {
+                    fprintf(ar->f, "|_|");
                 }
                 if (node->data.while_expr.continue_expr) {
                     fprintf(ar->f, ": (");
@@ -983,7 +985,9 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
                 if (node->data.while_expr.else_node) {
                     fprintf(ar->f, " else ");
                     if (node->data.while_expr.err_symbol) {
-                        fprintf(ar->f, "|%s| ", buf_ptr(node->data.while_expr.err_symbol));
+                        fprintf(ar->f, "|%s| ", buf_ptr(node->data.while_expr.err_symbol->data.symbol_expr.symbol));
+                    } else if (node->data.while_expr.err_is_discarded) {
+                        fprintf(ar->f, "|_|");
                     }
                     render_node_grouped(ar, node->data.while_expr.else_node);
                 }
@@ -1019,14 +1023,14 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
                 fprintf(ar->f, ") ");
                 if (node->data.if_err_expr.var_symbol) {
                     const char *ptr_str = node->data.if_err_expr.var_is_ptr ? "*" : "";
-                    const char *var_name = buf_ptr(node->data.if_err_expr.var_symbol);
+                    const char *var_name = buf_ptr(node->data.if_err_expr.var_symbol->data.symbol_expr.symbol);
                     fprintf(ar->f, "|%s%s| ", ptr_str, var_name);
                 }
                 render_node_grouped(ar, node->data.if_err_expr.then_node);
                 if (node->data.if_err_expr.else_node) {
                     fprintf(ar->f, " else ");
                     if (node->data.if_err_expr.err_symbol) {
-                        fprintf(ar->f, "|%s| ", buf_ptr(node->data.if_err_expr.err_symbol));
+                        fprintf(ar->f, "|%s| ", buf_ptr(node->data.if_err_expr.err_symbol->data.symbol_expr.symbol));
                     }
                     render_node_grouped(ar, node->data.if_err_expr.else_node);
                 }
@@ -1039,8 +1043,10 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
                 fprintf(ar->f, ") ");
                 if (node->data.test_expr.var_symbol) {
                     const char *ptr_str = node->data.test_expr.var_is_ptr ? "*" : "";
-                    const char *var_name = buf_ptr(node->data.test_expr.var_symbol);
+                    const char *var_name = buf_ptr(node->data.test_expr.var_symbol->data.symbol_expr.symbol);
                     fprintf(ar->f, "|%s%s| ", ptr_str, var_name);
+                } else if (node->data.test_expr.var_is_discarded) {
+                    fprintf(ar->f, "|_|");
                 }
                 render_node_grouped(ar, node->data.test_expr.then_node);
                 if (node->data.test_expr.else_node) {
@@ -1106,17 +1112,18 @@ static void render_node_extra(AstRender *ar, AstNode *node, bool grouped) {
                 fprintf(ar->f, "%sfor (", inline_str);
                 render_node_grouped(ar, node->data.for_expr.array_expr);
                 fprintf(ar->f, ") ");
+                fprintf(ar->f, "|");
+                if (node->data.for_expr.elem_is_ptr)
+                    fprintf(ar->f, "*");
                 if (node->data.for_expr.elem_node) {
-                    fprintf(ar->f, "|");
-                    if (node->data.for_expr.elem_is_ptr)
-                        fprintf(ar->f, "*");
-                    render_node_grouped(ar, node->data.for_expr.elem_node);
-                    if (node->data.for_expr.index_node) {
-                        fprintf(ar->f, ", ");
-                        render_node_grouped(ar, node->data.for_expr.index_node);
-                    }
-                    fprintf(ar->f, "| ");
+                    fprintf(ar->f, "%s", buf_ptr(node->data.for_expr.elem_node->data.symbol_expr.symbol));
+                } else {
+                    fprintf(ar->f, "_");
                 }
+                if (node->data.for_expr.index_node) {
+                    fprintf(ar->f, ", %s", buf_ptr(node->data.for_expr.index_node->data.symbol_expr.symbol));
+                }
+                fprintf(ar->f, "| ");
                 render_node_grouped(ar, node->data.for_expr.body);
                 if (node->data.for_expr.else_node) {
                     fprintf(ar->f, " else");

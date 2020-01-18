@@ -2622,7 +2622,7 @@ static Error resolve_enum_zero_bits(CodeGen *g, ZigType *enum_type) {
     bigint_init_unsigned(&bi_one, 1);
 
     AstNode *last_field_node = decl_node->data.container_decl.fields.at(field_count - 1);
-    if (buf_eql_str(last_field_node->data.struct_field.name, "_")) {
+    if (last_field_node->data.struct_field.name == nullptr) {
         field_count -= 1;
         if (field_count > 1 && log2_u64(field_count) == enum_type->size_in_bits) {
             add_node_error(g, last_field_node, buf_sprintf("non-exhaustive enum specifies every value"));
@@ -2667,9 +2667,10 @@ static Error resolve_enum_zero_bits(CodeGen *g, ZigType *enum_type) {
                     buf_sprintf("consider 'union(enum)' here"));
         }
 
-        if (buf_eql_str(type_enum_field->name, "_")) {
+        if (type_enum_field->name == nullptr) {
             add_node_error(g, field_node, buf_sprintf("'_' field of non-exhaustive enum must be last"));
             enum_type->data.enumeration.resolve_status = ResolveStatusInvalid;
+            continue;
         }
 
         auto field_entry = enum_type->data.enumeration.fields_by_name.put_unique(type_enum_field->name, type_enum_field);
@@ -2799,7 +2800,13 @@ static Error resolve_struct_zero_bits(CodeGen *g, ZigType *struct_type) {
             type_struct_field->name = field_node->data.struct_field.name;
             type_struct_field->decl_node = field_node;
             if (field_node->data.struct_field.comptime_token != nullptr) {
-                if (field_node->data.struct_field.value == nullptr) {
+                if (type_struct_field->name == nullptr) {
+                    add_token_error(g, field_node->owner,
+                        field_node->data.struct_field.comptime_token,
+                        buf_sprintf("padding field is comptime"));
+                    struct_type->data.structure.resolve_status = ResolveStatusInvalid;
+                    return ErrorSemanticAnalyzeFail;
+                } else if (field_node->data.struct_field.value == nullptr) {
                     add_token_error(g, field_node->owner,
                         field_node->data.struct_field.comptime_token,
                         buf_sprintf("comptime struct field missing initialization value"));
@@ -2820,13 +2827,15 @@ static Error resolve_struct_zero_bits(CodeGen *g, ZigType *struct_type) {
             src_assert(type_struct_field->type_entry != nullptr, field_node);
         } else zig_unreachable();
 
-        auto field_entry = struct_type->data.structure.fields_by_name.put_unique(type_struct_field->name, type_struct_field);
-        if (field_entry != nullptr) {
-            ErrorMsg *msg = add_node_error(g, field_node,
-                buf_sprintf("duplicate struct field: '%s'", buf_ptr(type_struct_field->name)));
-            add_error_note(g, msg, field_entry->value->decl_node, buf_sprintf("other field here"));
-            struct_type->data.structure.resolve_status = ResolveStatusInvalid;
-            return ErrorSemanticAnalyzeFail;
+        if (type_struct_field->name != nullptr) {
+            auto field_entry = struct_type->data.structure.fields_by_name.put_unique(type_struct_field->name, type_struct_field);
+            if (field_entry != nullptr) {
+                ErrorMsg *msg = add_node_error(g, field_node,
+                    buf_sprintf("duplicate struct field: '%s'", buf_ptr(type_struct_field->name)));
+                add_error_note(g, msg, field_entry->value->decl_node, buf_sprintf("other field here"));
+                struct_type->data.structure.resolve_status = ResolveStatusInvalid;
+                return ErrorSemanticAnalyzeFail;
+            }
         }
 
         ZigValue *field_type_val;
@@ -3104,13 +3113,15 @@ static Error resolve_union_zero_bits(CodeGen *g, ZigType *union_type) {
         union_field->decl_node = field_node;
         union_field->gen_index = UINT32_MAX;
 
-        auto field_entry = union_type->data.unionation.fields_by_name.put_unique(union_field->name, union_field);
-        if (field_entry != nullptr) {
-            ErrorMsg *msg = add_node_error(g, field_node,
-                buf_sprintf("duplicate union field: '%s'", buf_ptr(union_field->name)));
-            add_error_note(g, msg, field_entry->value->decl_node, buf_sprintf("other field here"));
-            union_type->data.unionation.resolve_status = ResolveStatusInvalid;
-            return ErrorSemanticAnalyzeFail;
+        if (union_field->name != nullptr) {
+            auto field_entry = union_type->data.unionation.fields_by_name.put_unique(union_field->name, union_field);
+            if (field_entry != nullptr) {
+                ErrorMsg *msg = add_node_error(g, field_node,
+                    buf_sprintf("duplicate union field: '%s'", buf_ptr(union_field->name)));
+                add_error_note(g, msg, field_entry->value->decl_node, buf_sprintf("other field here"));
+                union_type->data.unionation.resolve_status = ResolveStatusInvalid;
+                return ErrorSemanticAnalyzeFail;
+            }
         }
 
         bool field_is_zero_bits;

@@ -206,7 +206,7 @@ static void put_back_token(ParseContext *pc) {
 static Buf *token_buf(Token *token) {
     if (token == nullptr)
         return nullptr;
-    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdPrimitiveType || token->id == TokenIdSymbol || token->id == TokenIdUnderscore);
+    assert(token->id == TokenIdStringLiteral || token->id == TokenIdMultilineStringLiteral || token->id == TokenIdPrimitiveType || token->id == TokenIdSymbol);
     return &token->data.str_lit.str;
 }
 
@@ -216,7 +216,9 @@ static BigInt *token_bigint(Token *token) {
 }
 
 static AstNode *token_symbol(ParseContext *pc, Token *token) {
-    assert(token->id == TokenIdSymbol || token->id == TokenIdUnderscore);
+    if (token->id == TokenIdUnderscore)
+        return nullptr;
+    assert(token->id == TokenIdSymbol);
     AstNode *res = ast_create_node(pc, NodeTypeSymbol, token);
     res->data.symbol_expr.symbol = token_buf(token);
     return res;
@@ -371,12 +373,12 @@ static AstNode *ast_parse_if_expr_helper(ParseContext *pc, AstNode *(*body_parse
         res->data.if_err_expr.var_is_ptr = old.var_is_ptr;
         res->data.if_err_expr.var_symbol = old.var_symbol;
         res->data.if_err_expr.then_node = body;
-        res->data.if_err_expr.err_symbol = token_buf(err_payload);
+        res->data.if_err_expr.err_symbol = token_symbol(pc, err_payload);
         res->data.if_err_expr.else_node = else_body;
         return res;
     }
 
-    if (res->data.test_expr.var_symbol != nullptr) {
+    if (res->data.test_expr.var_symbol != nullptr || res->data.test_expr.var_is_discarded) {
         res->data.test_expr.then_node = body;
         res->data.test_expr.else_node = else_body;
         return res;
@@ -449,7 +451,8 @@ static AstNode *ast_parse_while_expr_helper(ParseContext *pc, AstNode *(*body_pa
 
     assert(res->type == NodeTypeWhileExpr);
     res->data.while_expr.body = body;
-    res->data.while_expr.err_symbol = token_buf(err_payload);
+    res->data.while_expr.err_symbol = err_payload == nullptr ? nullptr : token_symbol(pc, err_payload);
+    res->data.while_expr.err_is_discarded = err_payload != nullptr && err_payload->id == TokenIdUnderscore;
     res->data.while_expr.else_node = else_body;
     return res;
 }
@@ -865,7 +868,7 @@ static AstNode *ast_parse_container_field(ParseContext *pc) {
         expr = ast_expect(pc, ast_parse_expr);
 
     AstNode *res = ast_create_node(pc, NodeTypeStructField, identifier);
-    res->data.struct_field.name = token_buf(identifier);
+    res->data.struct_field.name = identifier->id == TokenIdUnderscore ? nullptr : token_buf(identifier);
     res->data.struct_field.type = type_expr;
     res->data.struct_field.value = expr;
     res->data.struct_field.align_expr = align_expr;
@@ -981,12 +984,12 @@ static AstNode *ast_parse_if_statement(ParseContext *pc) {
         res->data.if_err_expr.var_is_ptr = old.var_is_ptr;
         res->data.if_err_expr.var_symbol = old.var_symbol;
         res->data.if_err_expr.then_node = body;
-        res->data.if_err_expr.err_symbol = token_buf(err_payload);
+        res->data.if_err_expr.err_symbol = token_symbol(pc, err_payload);
         res->data.if_err_expr.else_node = else_body;
         return res;
     }
 
-    if (res->data.test_expr.var_symbol != nullptr) {
+    if (res->data.test_expr.var_symbol != nullptr || res->data.test_expr.var_is_discarded) {
         res->data.test_expr.then_node = body;
         res->data.test_expr.else_node = else_body;
         return res;
@@ -1118,7 +1121,8 @@ static AstNode *ast_parse_while_statement(ParseContext *pc) {
 
     assert(res->type == NodeTypeWhileExpr);
     res->data.while_expr.body = body;
-    res->data.while_expr.err_symbol = token_buf(err_payload);
+    res->data.while_expr.err_symbol = err_payload == nullptr ? nullptr : token_symbol(pc, err_payload);
+    res->data.while_expr.err_is_discarded = err_payload != nullptr && err_payload->id == TokenIdUnderscore;
     res->data.while_expr.else_node = else_body;
     return res;
 }
@@ -1992,7 +1996,7 @@ static AsmOutput *ast_parse_asm_output_item(ParseContext *pc) {
     expect_token(pc, TokenIdRParen);
 
     AsmOutput *res = allocate<AsmOutput>(1);
-    res->asm_symbolic_name = token_buf(sym_name);
+    res->asm_symbolic_name = sym_name->id == TokenIdUnderscore ? nullptr : token_buf(sym_name);
     res->constraint = token_buf(str);
     res->variable_name = token_buf(var_name);
     res->return_type = return_type;
@@ -2031,7 +2035,7 @@ static AsmInput *ast_parse_asm_input_item(ParseContext *pc) {
     expect_token(pc, TokenIdRParen);
 
     AsmInput *res = allocate<AsmInput>(1);
-    res->asm_symbolic_name = token_buf(sym_name);
+    res->asm_symbolic_name = sym_name->id == TokenIdUnderscore ? nullptr : token_buf(sym_name);
     res->constraint = token_buf(constraint);
     res->expr = expr;
     return res;
@@ -2250,7 +2254,8 @@ static AstNode *ast_parse_if_prefix(ParseContext *pc) {
     AstNode *res = ast_create_node(pc, NodeTypeIfOptional, first);
     res->data.test_expr.target_node = condition;
     if (opt_payload.unwrap(&payload)) {
-        res->data.test_expr.var_symbol = token_buf(payload.payload);
+        res->data.test_expr.var_symbol = token_symbol(pc, payload.payload);
+        res->data.test_expr.var_is_discarded = payload.payload->id == TokenIdUnderscore;
         res->data.test_expr.var_is_ptr = payload.asterisk != nullptr;
     }
     return res;
@@ -2273,7 +2278,8 @@ static AstNode *ast_parse_while_prefix(ParseContext *pc) {
     res->data.while_expr.condition = condition;
     res->data.while_expr.continue_expr = continue_expr;
     if (opt_payload.unwrap(&payload)) {
-        res->data.while_expr.var_symbol = token_buf(payload.payload);
+        res->data.while_expr.var_symbol = token_symbol(pc, payload.payload);
+        res->data.while_expr.var_is_discarded = payload.payload->id == TokenIdUnderscore;
         res->data.while_expr.var_is_ptr = payload.asterisk != nullptr;
     }
 
@@ -2321,7 +2327,9 @@ static Optional<PtrPayload> ast_parse_ptr_payload(ParseContext *pc) {
         return Optional<PtrPayload>::none();
 
     Token *asterisk = eat_token_if(pc, TokenIdStar);
-    Token *payload = eat_token_if(pc, TokenIdUnderscore);
+    Token *payload = nullptr;
+    if (asterisk == nullptr)
+        payload = eat_token_if(pc, TokenIdUnderscore);
     if (payload == nullptr)
         payload = expect_token(pc, TokenIdSymbol);
     expect_token(pc, TokenIdBinOr);
@@ -2338,7 +2346,9 @@ static Optional<PtrIndexPayload> ast_parse_ptr_index_payload(ParseContext *pc) {
         return Optional<PtrIndexPayload>::none();
 
     Token *asterisk = eat_token_if(pc, TokenIdStar);
-    Token *payload = eat_token_if(pc, TokenIdUnderscore);
+    Token *payload = nullptr;
+    if (asterisk == nullptr)
+        payload = eat_token_if(pc, TokenIdUnderscore);
     if (payload == nullptr)
         payload = expect_token(pc, TokenIdSymbol);
     Token *index = nullptr;
@@ -2382,6 +2392,20 @@ static AstNode *ast_parse_switch_prong(ParseContext *pc) {
 //      / KEYWORD_else
 //      / UNDERSCORE
 static AstNode *ast_parse_switch_case(ParseContext *pc) {
+    Token *underscore = eat_token_if(pc, TokenIdUnderscore);
+    if (underscore != nullptr) {
+        AstNode *res = ast_create_node(pc, NodeTypeSwitchProng, underscore);
+        res->data.switch_prong.is_underscore = true;
+        return res;
+    }
+
+    Token *else_token = eat_token_if(pc, TokenIdKeywordElse);
+    if (else_token != nullptr) {
+        AstNode *res = ast_create_node(pc, NodeTypeSwitchProng, else_token);
+        res->data.switch_prong.is_else = true;
+        return res;
+    }
+
     AstNode *first = ast_parse_switch_item(pc);
     if (first != nullptr) {
         AstNode *res = ast_create_node_copy_line_info(pc, NodeTypeSwitchProng, first);
@@ -2399,14 +2423,6 @@ static AstNode *ast_parse_switch_case(ParseContext *pc) {
 
         return res;
     }
-
-    Token *else_token = eat_token_if(pc, TokenIdKeywordElse);
-    if (else_token != nullptr)
-        return ast_create_node(pc, NodeTypeSwitchProng, else_token);
-
-    Token *underscore = eat_token_if(pc, TokenIdUnderscore);
-    if (underscore != nullptr)
-        return ast_create_node(pc, NodeTypeSwitchProng, underscore);
 
     return nullptr;
 }
