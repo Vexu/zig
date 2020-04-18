@@ -218,17 +218,6 @@ fn renderContainerDecl(allocator: *mem.Allocator, stream: var, tree: *ast.Tree, 
                 fn_proto.visib_token = null; // make sure pub is not rendered twice
             }
 
-            if (fn_proto.extern_export_inline_token) |extern_export_inline_token| {
-                const tok = tree.tokens.at(extern_export_inline_token);
-                switch (tok.id) {
-                    .Keyword_extern, .Keyword_export => {
-                        try renderToken(tree, stream, extern_export_inline_token, indent, start_col, Space.Space); // extern/export
-                        fn_proto.extern_export_inline_token = null; // make sure extern/export is not rendered twice
-                    },
-                    else => {}, // inline/noinline
-                }
-            }
-
             if (fn_proto.lib_name) |lib_name| {
                 try renderExpression(allocator, stream, tree, indent, start_col, lib_name, Space.Space);
                 fn_proto.lib_name = null; // make sure lib_name is not rendered twice
@@ -1444,17 +1433,8 @@ fn renderExpression(
                 try renderToken(tree, stream, visib_token_index, indent, start_col, Space.Space); // pub
             }
 
-            // Some extra machinery is needed to rewrite the old-style cc
-            // notation to the new callconv one
-            var cc_rewrite_str: ?[*:0]const u8 = null;
             if (fn_proto.extern_export_inline_token) |extern_export_inline_token| {
-                const tok = tree.tokens.at(extern_export_inline_token);
-                if (tok.id != .Keyword_extern or fn_proto.body_node == null) {
-                    try renderToken(tree, stream, extern_export_inline_token, indent, start_col, Space.Space); // extern/export
-                } else {
-                    cc_rewrite_str = ".C";
-                    fn_proto.lib_name = null;
-                }
+                try renderToken(tree, stream, extern_export_inline_token, indent, start_col, .Space); // inline/noinline/extern
             }
 
             if (fn_proto.lib_name) |lib_name| {
@@ -1462,12 +1442,7 @@ fn renderExpression(
             }
 
             if (fn_proto.cc_token) |cc_token| {
-                var str = tree.tokenSlicePtr(tree.tokens.at(cc_token));
-                if (mem.eql(u8, str, "stdcallcc")) {
-                    cc_rewrite_str = ".Stdcall";
-                } else if (mem.eql(u8, str, "nakedcc")) {
-                    cc_rewrite_str = ".Naked";
-                } else try renderToken(tree, stream, cc_token, indent, start_col, Space.Space); // stdcallcc
+                try renderToken(tree, stream, cc_token, indent, start_col, Space.Space); // async
             }
 
             const lparen = if (fn_proto.name_token) |name_token| blk: {

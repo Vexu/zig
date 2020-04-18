@@ -241,6 +241,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         break :blk null;
     };
 
+    // TODO deprecate
     if (try parseFnProto(arena, it, tree)) |node| {
         const fn_node = node.cast(Node.FnProto).?;
         fn_node.*.extern_export_inline_token = extern_export_inline_token;
@@ -1762,13 +1763,9 @@ fn parseCallconv(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 /// FnCC
-///     <- KEYWORD_nakedcc
-///      / KEYWORD_stdcallcc
-///      / KEYWORD_extern
+///     <- KEYWORD_extern
 ///      / KEYWORD_async
 fn parseFnCC(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?FnCC {
-    if (eatToken(it, .Keyword_nakedcc)) |token| return FnCC{ .CC = token };
-    if (eatToken(it, .Keyword_stdcallcc)) |token| return FnCC{ .CC = token };
     if (eatToken(it, .Keyword_extern)) |token| return FnCC{ .Extern = token };
     if (eatToken(it, .Keyword_async)) |token| return FnCC{ .CC = token };
     return null;
