@@ -284,3 +284,33 @@ test "function with inferred error set but returning no error" {
     const return_ty = @typeInfo(@TypeOf(S.foo)).Fn.return_type.?;
     expectEqual(0, @typeInfo(@typeInfo(return_ty).ErrorUnion.error_set).ErrorSet.?.len);
 }
+
+test "function expression" {
+    const S = struct {
+        const doTheTest = fn() void {
+            expect(foo(2, 4) == 6);
+        };
+        
+        const foo = fn(a: usize, b: usize) usize {
+            return a + b;
+        };
+    };
+    S.doTheTest();
+    comptime S.doTheTest();
+}
+
+// test "anonymous function expression" {
+//     const S = struct {
+//         const doTheTest = fn() void {
+//             tester(fn(a: usize, b: usize) usize {
+//                 return a + b;
+//             });
+//         };
+        
+//         const tester = fn(foo: fn(usize, usize) usize) void {
+//             expect(foo(2,4) == 6);
+//         };
+//     };
+//     S.doTheTest();
+//     comptime S.doTheTest();
+// }

@@ -9616,6 +9616,32 @@ static IrInstSrc *ir_gen_container_decl(IrBuilderSrc *irb, Scope *parent_scope, 
     return ir_build_const_type(irb, parent_scope, node, container_type);
 }
 
+static IrInstSrc *ir_gen_fn_decl(IrBuilderSrc *irb, Scope *parent_scope, AstNode *node, LVal lval,
+        ResultLoc *result_loc)
+{
+    assert(node->type == NodeTypeFnDef);
+    assert(node->data.fn_def.body != nullptr);
+    AstNode *proto_node = node->data.fn_def.fn_proto;
+
+    Buf *bare_name = buf_alloc();
+    get_anon_type_name(irb->codegen, irb->exec, "fn", parent_scope, node, bare_name);
+
+    
+    TldFn *tld_fn = heap::c_allocator.create<TldFn>();
+    init_tld(&tld_fn->base, TldIdFn, bare_name, VisibModPub, proto_node, parent_scope);
+    irb->codegen->resolve_queue.append(&tld_fn->base);
+
+    // Add this to the list to mark as invalid if analyzing this exec fails.
+    irb->exec->tld_list.append(&tld_fn->base);
+
+    IrInstSrc *decl_ref = ir_build_decl_ref(irb, parent_scope, node, &tld_fn->base, lval);
+    if (lval == LValPtr) {
+        return decl_ref;
+    } else {
+        return ir_expr_wrap(irb, parent_scope, decl_ref, result_loc);
+    }
+}
+
 // errors should be populated with set1's values
 static ZigType *get_error_set_union(CodeGen *g, ErrorTableEntry **errors, ZigType *set1, ZigType *set2,
         Buf *type_name)
@@ -9923,9 +9949,10 @@ static IrInstSrc *ir_gen_node_raw(IrBuilderSrc *irb, AstNode *node, Scope *scope
         case NodeTypeSwitchRange:
         case NodeTypeStructField:
         case NodeTypeErrorSetField:
-        case NodeTypeFnDef:
         case NodeTypeTestDecl:
             zig_unreachable();
+        case NodeTypeFnDef:
+            return ir_gen_fn_decl(irb, scope, node, lval, result_loc);
         case NodeTypeBlock:
             return ir_gen_block(irb, scope, node, lval, result_loc);
         case NodeTypeGroupedExpr:
