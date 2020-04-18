@@ -164,6 +164,7 @@ pub const Error = union(enum) {
     ExpectedLoopExpr: ExpectedLoopExpr,
     ExpectedDerefOrUnwrap: ExpectedDerefOrUnwrap,
     ExpectedSuffixOp: ExpectedSuffixOp,
+    ExpectedFnBody: ExpectedFnBody,
 
     pub fn render(self: *const Error, tokens: *Tree.TokenList, stream: var) !void {
         switch (self.*) {
@@ -211,6 +212,7 @@ pub const Error = union(enum) {
             .ExpectedLoopExpr => |*x| return x.render(tokens, stream),
             .ExpectedDerefOrUnwrap => |*x| return x.render(tokens, stream),
             .ExpectedSuffixOp => |*x| return x.render(tokens, stream),
+            .ExpectedFnBody => |*x| return x.render(tokens, stream),
         }
     }
 
@@ -260,6 +262,7 @@ pub const Error = union(enum) {
             .ExpectedLoopExpr => |x| return x.token,
             .ExpectedDerefOrUnwrap => |x| return x.token,
             .ExpectedSuffixOp => |x| return x.token,
+            .ExpectedFnBody => |x| return x.token,
         }
     }
 
@@ -296,6 +299,7 @@ pub const Error = union(enum) {
     pub const ExpectedLoopExpr = SingleTokenError("Expected loop expression, found '{}'");
     pub const ExpectedDerefOrUnwrap = SingleTokenError("Expected pointer dereference or optional unwrap, found '{}'");
     pub const ExpectedSuffixOp = SingleTokenError("Expected pointer dereference, optional unwrap, or field access, found '{}'");
+    pub const ExpectedFnBody = SingleTokenError("Expected function body, found '{}'");
 
     pub const ExpectedParamType = SimpleError("Expected parameter type");
     pub const ExpectedPubItem = SimpleError("Expected function or variable declaration after pub");

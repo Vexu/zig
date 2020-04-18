@@ -1021,13 +1021,11 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         return node;
     }
 
-    if (inline_token == null) return null;
+    if (inline_token) |token| {
+        putBackToken(it, token);
+    }
 
-    // If we've seen "inline", there should have been a "for" or "while"
-    try tree.errors.push(.{
-        .ExpectedInlinable = .{ .token = it.index },
-    });
-    return error.ParseError;
+    return null;
 }
 
 /// ForExpr <- ForPrefix Expr (KEYWORD_else Expr)?
@@ -1248,7 +1246,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 ///      / DOT IDENTIFIER
 ///      / ErrorSetDecl
 ///      / FLOAT
-///      / FnProto
+///      / (KEYWORD_inline / KEYWORD_noinline)? FnProto Block?
 ///      / GroupedExpr
 ///      / LabeledTypeExpr
 ///      / IDENTIFIER
@@ -1278,7 +1276,25 @@ fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     if (try parseAnonLiteral(arena, it, tree)) |node| return node;
     if (try parseErrorSetDecl(arena, it, tree)) |node| return node;
     if (try parseFloatLiteral(arena, it, tree)) |node| return node;
-    if (try parseFnProto(arena, it, tree)) |node| return node;
+
+    const inline_token = eatToken(it, .Keyword_inline) orelse eatToken(it, .Keyword_noinline);
+    if (try parseFnProto(arena, it, tree)) |node| {
+        const fn_node = node.cast(Node.FnProto).?;
+        fn_node.*.extern_export_inline_token = inline_token;
+        if (try parseBlock(arena, it, tree)) |body_node| {
+            fn_node.body_node = body_node;
+        } else if (inline_token != null) {
+            try tree.errors.push(.{
+                .ExpectedFnBody = .{ .token = it.index },
+            });
+            return null;
+        }
+        return node;
+    }
+    if (inline_token) |token| {
+        putBackToken(it, token);
+    }
+
     if (try parseGroupedExpr(arena, it, tree)) |node| return node;
     if (try parseLabeledTypeExpr(arena, it, tree)) |node| return node;
     if (try parseIdentifier(arena, it, tree)) |node| return node;

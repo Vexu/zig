@@ -412,7 +412,7 @@ static AstNode *ast_parse_loop_expr_helper(
     }
 
     if (inline_token != nullptr)
-        ast_invalid_token_error(pc, peek_token(pc));
+        put_back_token(pc);
     return nullptr;
 }
 
@@ -1596,7 +1596,7 @@ static AstNode *ast_parse_suffix_expr(ParseContext *pc) {
 //      / DOT IDENTIFIER
 //      / ErrorSetDecl
 //      / FLOAT
-//      / FnProto
+//      / (KEYWORD_inline / KEYWORD_noinline)? FnProto Block?
 //      / GroupedExpr
 //      / LabeledTypeExpr
 //      / IDENTIFIER
@@ -1670,9 +1670,45 @@ static AstNode *ast_parse_primary_type_expr(ParseContext *pc) {
         return res;
     }
 
+    Token *inline_token = eat_token_if(pc, TokenIdKeywordInline);
+    if (inline_token == nullptr)
+        inline_token = eat_token_if(pc, TokenIdKeywordNoInline);
+
     AstNode *fn_proto = ast_parse_fn_proto(pc);
-    if (fn_proto != nullptr)
-        return fn_proto;
+    if (fn_proto != nullptr) {
+        AstNode *body = ast_parse_block(pc);
+
+        if (inline_token != nullptr) {
+            fn_proto->line = inline_token->start_line;
+            fn_proto->column = inline_token->start_column;
+            switch (inline_token->id) {
+                case TokenIdKeywordInline:
+                    fn_proto->data.fn_proto.fn_inline = FnInlineAlways;
+                    break;
+                case TokenIdKeywordNoInline:
+                    fn_proto->data.fn_proto.fn_inline = FnInlineNever;
+                    break;
+                default:
+                    fn_proto->data.fn_proto.fn_inline = FnInlineAuto;
+                    break;
+            }
+            if (body == nullptr) {
+                ast_error(pc, peek_token(pc), "expected function body");
+            }
+        }
+        if (body == nullptr)
+            return fn_proto;
+
+        AstNode *res = ast_create_node_copy_line_info(pc, NodeTypeFnDef, fn_proto);
+        res->data.fn_def.fn_proto = fn_proto;
+        res->data.fn_def.body = body;
+        fn_proto->data.fn_proto.fn_def_node = res;
+
+        return res;
+    }
+
+    if (inline_token != nullptr)
+        put_back_token(pc);
 
     AstNode *grouped_expr = ast_parse_grouped_expr(pc);
     if (grouped_expr != nullptr)

@@ -209,14 +209,44 @@ fn renderTopLevelDecl(allocator: *mem.Allocator, stream: var, tree: *ast.Tree, i
 fn renderContainerDecl(allocator: *mem.Allocator, stream: var, tree: *ast.Tree, indent: usize, start_col: *usize, decl: *ast.Node, space: Space) (@TypeOf(stream).Error || Error)!void {
     switch (decl.id) {
         .FnProto => {
+            // TODO deprecate
             const fn_proto = @fieldParentPtr(ast.Node.FnProto, "base", decl);
 
             try renderDocComments(tree, stream, fn_proto, indent, start_col);
+            if (fn_proto.visib_token) |visib_token| {
+                try renderToken(tree, stream, visib_token, indent, start_col, .Space); // pub
+                fn_proto.visib_token = null; // make sure pub is not rendered twice
+            }
+
+            if (fn_proto.extern_export_inline_token) |extern_export_inline_token| {
+                const tok = tree.tokens.at(extern_export_inline_token);
+                switch (tok.id) {
+                    .Keyword_extern, .Keyword_export => {
+                        try renderToken(tree, stream, extern_export_inline_token, indent, start_col, Space.Space); // extern/export
+                        fn_proto.extern_export_inline_token = null; // make sure extern/export is not rendered twice
+                    },
+                    else => {}, // inline/noinline
+                }
+            }
+
+            if (fn_proto.lib_name) |lib_name| {
+                try renderExpression(allocator, stream, tree, indent, start_col, lib_name, Space.Space);
+                fn_proto.lib_name = null; // make sure lib_name is not rendered twice
+            }
+
+            try stream.writeAll("const ");
+            const after_ident_token: Space = if (fn_proto.body_node == null) .None else .Space;
+            try renderToken(tree, stream, fn_proto.name_token.?, indent, start_col, after_ident_token);
+            fn_proto.name_token = null; // make sure ident is not rendered twice
 
             if (fn_proto.body_node) |body_node| {
-                try renderExpression(allocator, stream, tree, indent, start_col, decl, .Space);
-                try renderExpression(allocator, stream, tree, indent, start_col, body_node, space);
+                try stream.writeAll("= ");
+
+                try renderExpression(allocator, stream, tree, indent, start_col, decl, .None);
+                try stream.writeAll(";\n");
             } else {
+                try stream.writeAll(": ");
+
                 try renderExpression(allocator, stream, tree, indent, start_col, decl, .None);
                 try renderToken(tree, stream, tree.nextToken(decl.lastToken()), indent, start_col, space);
             }
@@ -1446,7 +1476,11 @@ fn renderExpression(
                 break :blk tree.nextToken(name_token);
             } else blk: {
                 try renderToken(tree, stream, fn_proto.fn_token, indent, start_col, Space.Space); // fn
-                break :blk tree.nextToken(fn_proto.fn_token);
+                // TODO simplify after deprecation
+                const next = tree.nextToken(fn_proto.fn_token);
+                if (tree.tokens.at(next).id == .Identifier)
+                    break :blk tree.nextToken(next);
+                break :blk next;
             };
             assert(tree.tokens.at(lparen).id == .LParen);
 
@@ -1535,14 +1569,19 @@ fn renderExpression(
                 try stream.writeAll(") ");
             }
 
+            const after_ret_space = if (fn_proto.body_node == null) space else .Space;
             switch (fn_proto.return_type) {
                 ast.Node.FnProto.ReturnType.Explicit => |node| {
-                    return renderExpression(allocator, stream, tree, indent, start_col, node, space);
+                    try renderExpression(allocator, stream, tree, indent, start_col, node, after_ret_space);
                 },
                 ast.Node.FnProto.ReturnType.InferErrorSet => |node| {
                     try renderToken(tree, stream, tree.prevToken(node.firstToken()), indent, start_col, Space.None); // !
-                    return renderExpression(allocator, stream, tree, indent, start_col, node, space);
+                    try renderExpression(allocator, stream, tree, indent, start_col, node, after_ret_space);
                 },
+            }
+
+            if (fn_proto.body_node) |body_node| {
+                try renderExpression(allocator, stream, tree, indent, start_col, body_node, space);
             }
         },
 

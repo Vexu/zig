@@ -10207,7 +10207,7 @@ PrimaryTypeExpr
      / DOT InitList
      / ErrorSetDecl
      / FLOAT
-     / FnProto
+     / (KEYWORD_inline / KEYWORD_noinline)? FnProto Block?
      / GroupedExpr
      / LabeledTypeExpr
      / IDENTIFIER

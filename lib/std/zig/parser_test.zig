@@ -1,3 +1,23 @@
+test "zig fmt: function expression" {
+    try testCanonical(
+        \\extern const foo: fn () void;
+        \\export const bar = fn () void {};
+        \\pub const baz = inline fn () void {};
+        \\
+    );
+
+    try testTransform(
+        \\extern fn foo() void;
+        \\export fn bar() void {}
+        \\pub inline fn baz() void {}
+    ,
+        \\extern const foo: fn () void;
+        \\export const bar = fn () void {};
+        \\pub const baz = inline fn () void {};
+        \\
+    );
+}
+
 test "zig fmt: errdefer with payload" {
     try testCanonical(
         \\pub fn main() anyerror!void {
