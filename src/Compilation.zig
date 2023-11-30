@@ -1098,10 +1098,6 @@ pub fn create(gpa: Allocator, options: InitOptions) !*Compilation {
             if (options.emit_llvm_ir != null or options.emit_llvm_bc != null)
                 break :blk true;
 
-            // If we have no zig code to compile, no need for LLVM.
-            if (options.main_mod == null)
-                break :blk false;
-
             // If we cannot use LLVM libraries, then our own backends will be a
             // better default since the LLVM backend can only produce bitcode
             // and not an object file or executable.
