@@ -1114,7 +1114,7 @@ fn buildOutputType(
                     } else if (mem.eql(u8, arg, "--subsystem")) {
                         subsystem = try parseSubSystem(args_iter.nextOrFatal());
                     } else if (mem.eql(u8, arg, "-O")) {
-                        mod_opts.optimize_mode = parseOptimizeMode(args_iter.nextOrFatal());
+                        mod_opts.optimize_mode, mod_opts.safety_checks = parseOptimizeMode(args_iter.nextOrFatal());
                     } else if (mem.startsWith(u8, arg, "-fentry=")) {
                         entry = .{ .named = arg["-fentry=".len..] };
                     } else if (mem.eql(u8, arg, "--force_undefined")) {
@@ -1255,7 +1255,7 @@ fn buildOutputType(
                     } else if (mem.startsWith(u8, arg, "-mcpu=")) {
                         target_mcpu = arg["-mcpu=".len..];
                     } else if (mem.startsWith(u8, arg, "-O")) {
-                        mod_opts.optimize_mode = parseOptimizeMode(arg["-O".len..]);
+                        mod_opts.optimize_mode, mod_opts.safety_checks = parseOptimizeMode(arg["-O".len..]);
                     } else if (mem.eql(u8, arg, "--dynamic-linker")) {
                         create_module.dynamic_linker = args_iter.nextOrFatal();
                     } else if (mem.eql(u8, arg, "--sysroot")) {
@@ -7768,9 +7768,29 @@ fn findTemplates(gpa: Allocator, arena: Allocator) Templates {
     };
 }
 
-fn parseOptimizeMode(s: []const u8) std.builtin.OptimizeMode {
-    return std.meta.stringToEnum(std.builtin.OptimizeMode, s) orelse
-        fatal("unrecognized optimization mode: '{s}'", .{s});
+fn parseOptimizeMode(s: []const u8) struct { std.builtin.OptimizeMode, std.EnumArray(std.builtin.SafetyCheck, bool) } {
+    var index = std.mem.indexOfAny(u8, s, "+-") orelse s.len;
+    const mode_name = s[0..index];
+    const mode = std.meta.stringToEnum(std.builtin.OptimizeMode, mode_name) orelse
+        fatal("unrecognized optimization mode: '{s}'", .{mode_name});
+    var safety_checks = std.EnumArray(std.builtin.SafetyCheck, bool).initFill(mode == .Debug or mode == .ReleaseSafe);
+
+    while (index < s.len) {
+        const value = switch (s[index]) {
+            '+' => true,
+            '-' => false,
+            else => unreachable,
+        };
+        const start = index + 1;
+        index = std.mem.indexOfAnyPos(u8, s, start, "+-") orelse s.len;
+
+        const check_name = s[start..index];
+        const check = std.meta.stringToEnum(std.builtin.SafetyCheck, check_name) orelse
+            fatal("unrecognized safety check: '{s}'", .{check_name});
+
+        safety_checks.set(check, value);
+    }
+    return .{ mode, safety_checks };
 }
 
 fn parseWasiExecModel(s: []const u8) std.builtin.WasiExecModel {

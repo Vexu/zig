@@ -157,6 +157,17 @@ pub const OptimizeMode = enum {
     ReleaseSmall,
 };
 
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
+pub const SafetyCheck = enum {
+    @"unreachable",
+    add,
+    sub,
+    div,
+    mul,
+    // TODO iterate all kinds of safety checks
+};
+
 /// Deprecated; use OptimizeMode.
 pub const Mode = OptimizeMode;
 

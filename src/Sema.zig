@@ -362,7 +362,9 @@ pub const Block = struct {
     error_return_trace_index: Air.Inst.Ref = .none,
 
     /// when null, it is determined by build mode, changed by @setRuntimeSafety
+    /// TODO replace with safety_checks
     want_safety: ?bool = null,
+    safety_checks: ?std.EnumArray(std.builtin.SafetyCheck, bool) = null,
 
     /// What mode to generate float operations in, set by @setFloatMode
     float_mode: std.builtin.FloatMode = .Strict,
@@ -484,6 +486,7 @@ pub const Block = struct {
             .runtime_loop = parent.runtime_loop,
             .runtime_index = parent.runtime_index,
             .want_safety = parent.want_safety,
+            .safety_checks = parent.safety_checks,
             .float_mode = parent.float_mode,
             .c_import_buf = parent.c_import_buf,
             .error_return_trace_index = parent.error_return_trace_index,
@@ -491,12 +494,17 @@ pub const Block = struct {
     }
 
     pub fn wantSafety(block: *const Block) bool {
-        return block.want_safety orelse switch (block.sema.mod.optimizeMode()) {
+        return block.want_safety orelse switch (block.ownerModule().optimize_mode) {
             .Debug => true,
             .ReleaseSafe => true,
             .ReleaseFast => false,
             .ReleaseSmall => false,
         };
+    }
+
+    pub fn wantSafety2(block: *const Block, safety_check: std.builtin.SafetyCheck) bool {
+        const safety_checks = block.safety_checks orelse block.ownerModule().safety_checks;
+        return safety_checks.get(safety_check);
     }
 
     pub fn getFileScope(block: *Block, mod: *Module) *Module.File {
@@ -778,7 +786,7 @@ pub const Block = struct {
     }
 
     fn addUnreachable(block: *Block, src: LazySrcLoc, safety_check: bool) !void {
-        if (safety_check and block.wantSafety()) {
+        if (safety_check and block.wantSafety2(.@"unreachable")) {
             try block.sema.safetyPanic(block, src, .unreach);
         } else {
             _ = try block.addNoOp(.unreach);
@@ -5887,6 +5895,7 @@ fn zirBlock(sema: *Sema, parent_block: *Block, inst: Zir.Inst.Index, force_compt
         .comptime_reason = parent_block.comptime_reason,
         .is_typeof = parent_block.is_typeof,
         .want_safety = parent_block.want_safety,
+        .safety_checks = parent_block.safety_checks,
         .float_mode = parent_block.float_mode,
         .c_import_buf = parent_block.c_import_buf,
         .runtime_cond = parent_block.runtime_cond,
@@ -11343,6 +11352,7 @@ fn zirSwitchBlockErrUnion(sema: *Sema, block: *Block, inst: Zir.Inst.Index) Comp
         .runtime_index = block.runtime_index,
         .error_return_trace_index = block.error_return_trace_index,
         .want_safety = block.want_safety,
+        .safety_checks = block.safety_checks,
     };
     const merges = &child_block.label.?.merges;
     defer child_block.instructions.deinit(gpa);
@@ -12049,6 +12059,7 @@ fn zirSwitchBlock(sema: *Sema, block: *Block, inst: Zir.Inst.Index, operand_is_r
         .runtime_loop = block.runtime_loop,
         .runtime_index = block.runtime_index,
         .want_safety = block.want_safety,
+        .safety_checks = block.safety_checks,
         .error_return_trace_index = block.error_return_trace_index,
     };
     const merges = &child_block.label.?.merges;

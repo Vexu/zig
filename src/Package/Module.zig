@@ -16,6 +16,7 @@ deps: Deps = .{},
 
 resolved_target: ResolvedTarget,
 optimize_mode: std.builtin.OptimizeMode,
+safety_checks: std.EnumArray(std.builtin.SafetyCheck, bool),
 code_model: std.builtin.CodeModel,
 single_threaded: bool,
 error_tracing: bool,
@@ -73,6 +74,7 @@ pub const CreateOptions = struct {
         /// If this is null then `parent` must be non-null.
         resolved_target: ?ResolvedTarget = null,
         optimize_mode: ?std.builtin.OptimizeMode = null,
+        safety_checks: ?std.EnumArray(std.builtin.SafetyCheck, bool) = null,
         code_model: ?std.builtin.CodeModel = null,
         single_threaded: ?bool = null,
         error_tracing: ?bool = null,
@@ -310,6 +312,9 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Package.Module {
         break :b buf.items[0 .. buf.items.len - 1 :0].ptr;
     };
 
+    const safety_checks = options.inherited.safety_checks orelse
+        if (options.parent) |p| p.safety_checks else std.EnumArray(std.builtin.SafetyCheck, bool).initFill(is_safe_mode);
+
     const mod = try arena.create(Module);
     mod.* = .{
         .root = options.paths.root,
@@ -322,6 +327,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Package.Module {
             .llvm_cpu_features = llvm_cpu_features,
         },
         .optimize_mode = optimize_mode,
+        .safety_checks = safety_checks,
         .single_threaded = single_threaded,
         .error_tracing = error_tracing,
         .valgrind = valgrind,
@@ -387,6 +393,7 @@ pub fn create(arena: Allocator, options: CreateOptions) !*Package.Module {
                 .llvm_cpu_features = llvm_cpu_features,
             },
             .optimize_mode = optimize_mode,
+            .safety_checks = safety_checks,
             .single_threaded = single_threaded,
             .error_tracing = error_tracing,
             .valgrind = valgrind,
@@ -446,6 +453,7 @@ pub fn createLimited(gpa: Allocator, options: LimitedOptions) Allocator.Error!*P
 
         .resolved_target = undefined,
         .optimize_mode = undefined,
+        .safety_checks = undefined,
         .code_model = undefined,
         .single_threaded = undefined,
         .error_tracing = undefined,
