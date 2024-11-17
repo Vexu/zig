@@ -646,6 +646,10 @@ fn runStepNames(
                 // A -> B -> C (failure)
                 // B will be marked as dependency_failure, while A may never be queued, and thus
                 // remain in the initial state of precheck_done.
+                if (s.expect_failure) {
+                    s.state = .success;
+                    continue;
+                }
                 s.state = .dependency_failure;
                 pending_count += 1;
             },
@@ -1012,6 +1016,8 @@ fn constructGraphAndCheckForDependencyLoop(
             rand.shuffle(*Step, deps);
 
             for (deps) |dep| {
+                if (s.expect_failure) dep.dependant_expects_failure = true;
+                if (s.dependant_expects_failure) dep.dependant_expects_failure = true;
                 try step_stack.put(b.allocator, dep, {});
                 try dep.dependants.append(b.allocator, s);
                 constructGraphAndCheckForDependencyLoop(b, dep, step_stack, rand) catch |err| {
@@ -1051,7 +1057,16 @@ fn workerMakeOneStep(
     for (s.dependencies.items) |dep| {
         switch (@atomicLoad(Step.State, &dep.state, .seq_cst)) {
             .success, .skipped => continue,
-            .failure, .dependency_failure, .skipped_oom => {
+            .failure, .dependency_failure => {
+                if (s.expect_failure) {
+                    // no need to run
+                    @atomicStore(Step.State, &s.state, .success, .seq_cst);
+                    return;
+                }
+                @atomicStore(Step.State, &s.state, .dependency_failure, .seq_cst);
+                return;
+            },
+            .skipped_oom => {
                 @atomicStore(Step.State, &s.state, .dependency_failure, .seq_cst);
                 return;
             },
@@ -1101,31 +1116,32 @@ fn workerMakeOneStep(
         .watch = run.watch,
     });
 
-    // No matter the result, we want to display error/warning messages.
-    const show_compile_errors = !run.prominent_compile_errors and
-        s.result_error_bundle.errorMessageCount() > 0;
-    const show_error_msgs = s.result_error_msgs.items.len > 0;
-    const show_stderr = s.result_stderr.len > 0;
-
-    if (show_error_msgs or show_compile_errors or show_stderr) {
-        std.debug.lockStdErr();
-        defer std.debug.unlockStdErr();
-
-        const gpa = b.allocator;
-        const options: std.zig.ErrorBundle.RenderOptions = .{
-            .ttyconf = run.ttyconf,
-            .include_reference_trace = (b.reference_trace orelse 0) > 0,
-        };
-        printErrorMessages(gpa, s, options, run.stderr, run.prominent_compile_errors) catch {};
-    }
-
+    var should_print = true;
     handle_result: {
         if (make_result) |_| {
-            @atomicStore(Step.State, &s.state, .success, .seq_cst);
-        } else |err| switch (err) {
-            error.MakeFailed => {
+            if (s.expect_failure) {
+                const msg = std.fmt.allocPrint(b.allocator, "expected step '{s}' to fail but it didn't", .{
+                    s.name,
+                }) catch @panic("OOM");
+                s.result_error_msgs.append(b.allocator, msg) catch @panic("OOM");
                 @atomicStore(Step.State, &s.state, .failure, .seq_cst);
                 break :handle_result;
+            } else {
+                @atomicStore(Step.State, &s.state, .success, .seq_cst);
+            }
+        } else |err| switch (err) {
+            error.MakeFailed => {
+                if (s.expect_failure) {
+                    @atomicStore(Step.State, &s.state, .success, .seq_cst);
+                    should_print = false;
+                } else if (s.dependant_expects_failure) {
+                    @atomicStore(Step.State, &s.state, .dependency_failure, .seq_cst);
+                    should_print = false;
+                    break :handle_result;
+                } else {
+                    @atomicStore(Step.State, &s.state, .failure, .seq_cst);
+                    break :handle_result;
+                }
             },
             error.MakeSkipped => @atomicStore(Step.State, &s.state, .skipped, .seq_cst),
         }
@@ -1136,6 +1152,24 @@ fn workerMakeOneStep(
                 wg, b, dep, prog_node, run,
             });
         }
+    }
+
+    // No matter the result, we want to display error/warning messages.
+    const show_compile_errors = !run.prominent_compile_errors and
+        s.result_error_bundle.errorMessageCount() > 0;
+    const show_error_msgs = s.result_error_msgs.items.len > 0;
+    const show_stderr = s.result_stderr.len > 0;
+
+    if (should_print and (show_error_msgs or show_compile_errors or show_stderr)) {
+        std.debug.lockStdErr();
+        defer std.debug.unlockStdErr();
+
+        const gpa = b.allocator;
+        const options: std.zig.ErrorBundle.RenderOptions = .{
+            .ttyconf = run.ttyconf,
+            .include_reference_trace = (b.reference_trace orelse 0) > 0,
+        };
+        printErrorMessages(gpa, s, options, run.stderr, run.prominent_compile_errors) catch {};
     }
 
     // If this is a step that claims resources, we must now queue up other

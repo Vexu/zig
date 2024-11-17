@@ -52,6 +52,9 @@ test_results: TestResults,
 /// to print along with debugging messages.
 debug_stack_trace: []usize,
 
+expect_failure: bool,
+dependant_expects_failure: bool,
+
 pub const TestResults = struct {
     fail_count: u32 = 0,
     skip_count: u32 = 0,
@@ -186,6 +189,7 @@ pub const StepOptions = struct {
     makeFn: MakeFn = makeNoOp,
     first_ret_addr: ?usize = null,
     max_rss: usize = 0,
+    expect_failure: bool = false,
 };
 
 pub fn init(options: StepOptions) Step {
@@ -219,6 +223,8 @@ pub fn init(options: StepOptions) Step {
         .result_duration_ns = null,
         .result_peak_rss = 0,
         .test_results = .{},
+        .expect_failure = options.expect_failure,
+        .dependant_expects_failure = false,
     };
 }
 
