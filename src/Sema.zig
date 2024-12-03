@@ -30622,9 +30622,14 @@ fn coerceExtra(
                 };
             },
         },
-        .@"union" => switch (inst_ty.zigTypeTag(zcu)) {
-            .@"enum", .enum_literal => return sema.coerceEnumToUnion(block, dest_ty, dest_ty_src, inst, inst_src),
-            else => {},
+        .@"union" => blk: {
+            switch (inst_ty.zigTypeTag(zcu)) {
+                .@"enum", .enum_literal => return sema.coerceEnumToUnion(block, dest_ty, dest_ty_src, inst, inst_src) catch |err| switch (err) {
+                    error.NotCoercible => break :blk,
+                    else => |e| return e,
+                },
+                else => {},
+            }
         },
         .array => switch (inst_ty.zigTypeTag(zcu)) {
             .array => array_to_array: {
@@ -32341,7 +32346,7 @@ fn coerceEnumToUnion(
         return sema.failWithOwnedErrorMsg(block, msg);
     };
 
-    const enum_tag = try sema.coerce(block, tag_ty, inst, inst_src);
+    const enum_tag = try sema.coerceExtra(block, tag_ty, inst, inst_src, .{ .report_err = false });
     if (try sema.resolveDefinedValue(block, inst_src, enum_tag)) |val| {
         const field_index = union_ty.unionTagFieldIndex(val, pt.zcu) orelse {
             return sema.fail(block, inst_src, "union '{}' has no tag with value '{}'", .{
