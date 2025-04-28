@@ -4727,7 +4727,7 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#see_also|@cVaCopy|@cVaEnd|@cVaStart#}
       {#header_close#}
       {#header_open|@cVaCopy#}
-      <pre>{#syntax#}@cVaCopy(src: *std.builtin.VaList) std.builtin.VaList{#endsyntax#}</pre>
+      <pre>{#syntax#}@cVaCopy(src: *std.builtin.VaList) *std.builtin.VaList{#endsyntax#}</pre>
       <p>
       Implements the C macro {#syntax#}va_copy{#endsyntax#}.
       </p>
@@ -4741,7 +4741,7 @@ fn cmpxchgWeakButNotAtomic(comptime T: type, ptr: *T, expected_value: T, new_val
       {#see_also|@cVaArg|@cVaCopy|@cVaStart#}
       {#header_close#}
       {#header_open|@cVaStart#}
-      <pre>{#syntax#}@cVaStart() std.builtin.VaList{#endsyntax#}</pre>
+      <pre>{#syntax#}@cVaStart() *std.builtin.VaList{#endsyntax#}</pre>
       <p>
       Implements the C macro {#syntax#}va_start{#endsyntax#}. Only valid inside a variadic function.
       </p>

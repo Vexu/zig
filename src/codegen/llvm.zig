@@ -5651,16 +5651,12 @@ pub const FuncGen = struct {
         const ty_op = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
         const src_list = try self.resolveInst(ty_op.operand);
         const va_list_ty = ty_op.ty.toType();
-        const llvm_va_list_ty = try o.lowerType(va_list_ty);
 
         const result_alignment = va_list_ty.abiAlignment(pt.zcu).toLlvm();
         const dest_list = try self.buildAllocaWorkaround(va_list_ty, result_alignment);
 
         _ = try self.wip.callIntrinsic(.normal, .none, .va_copy, &.{dest_list.typeOfWip(&self.wip)}, &.{ dest_list, src_list }, "");
-        return if (isByRef(va_list_ty, zcu))
-            dest_list
-        else
-            try self.wip.load(.normal, llvm_va_list_ty, dest_list, result_alignment, "");
+        return dest_list;
     }
 
     fn airCVaEnd(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
@@ -5674,18 +5670,13 @@ pub const FuncGen = struct {
     fn airCVaStart(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
         const o = self.ng.object;
         const pt = o.pt;
-        const zcu = pt.zcu;
         const va_list_ty = self.typeOfIndex(inst);
-        const llvm_va_list_ty = try o.lowerType(va_list_ty);
 
         const result_alignment = va_list_ty.abiAlignment(pt.zcu).toLlvm();
         const dest_list = try self.buildAllocaWorkaround(va_list_ty, result_alignment);
 
         _ = try self.wip.callIntrinsic(.normal, .none, .va_start, &.{dest_list.typeOfWip(&self.wip)}, &.{dest_list}, "");
-        return if (isByRef(va_list_ty, zcu))
-            dest_list
-        else
-            try self.wip.load(.normal, llvm_va_list_ty, dest_list, result_alignment, "");
+        return dest_list;
     }
 
     fn airCmp(

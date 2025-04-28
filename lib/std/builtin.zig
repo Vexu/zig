@@ -949,35 +949,55 @@ pub const VaListXtensa = extern struct {
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
+pub const VaListWindows = *opaque {};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
+pub const VaListDarwin = *opaque {};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
+pub const VaListAix = *opaque {};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
+pub const VaListCommon = *opaque {};
+
+/// This data structure is used by the Zig language code generation and
+/// therefore must be kept in sync with the compiler implementation.
 pub const VaList = switch (builtin.cpu.arch) {
     .aarch64, .aarch64_be => switch (builtin.os.tag) {
-        .windows => *u8,
-        .ios, .macos, .tvos, .watchos, .visionos => *u8,
-        else => @compileError("disabled due to miscompilations"), // VaListAarch64,
+        .windows => VaListWindows,
+        .ios, .macos, .tvos, .watchos, .visionos => VaListDarwin,
+        else => VaListAarch64,
     },
     .arm, .armeb, .thumb, .thumbeb => switch (builtin.os.tag) {
-        .ios, .macos, .tvos, .watchos, .visionos => *u8,
-        else => *anyopaque,
+        .ios, .macos, .tvos, .watchos, .visionos => VaListDarwin,
+        else => VaListCommon,
     },
-    .amdgcn => *u8,
-    .avr => *anyopaque,
-    .bpfel, .bpfeb => *anyopaque,
-    .hexagon => if (builtin.target.abi.isMusl()) VaListHexagon else *u8,
-    .loongarch32, .loongarch64 => *anyopaque,
-    .mips, .mipsel, .mips64, .mips64el => *anyopaque,
-    .riscv32, .riscv64 => *anyopaque,
+    .amdgcn => VaListCommon,
+    .avr => VaListCommon,
+    .bpfel, .bpfeb => VaListCommon,
+    .hexagon => if (builtin.target.abi.isMusl()) VaListHexagon else VaListCommon,
+    .loongarch32, .loongarch64 => VaListCommon,
+    .mips, .mipsel, .mips64, .mips64el => VaListCommon,
+    .riscv32, .riscv64 => VaListCommon,
     .powerpc, .powerpcle => switch (builtin.os.tag) {
-        .ios, .macos, .tvos, .watchos, .visionos, .aix => *u8,
+        .aix => VaListAix,
+        .ios, .macos, .tvos, .watchos, .visionos => VaListDarwin,
         else => VaListPowerPc,
     },
-    .powerpc64, .powerpc64le => *u8,
-    .sparc, .sparc64 => *anyopaque,
-    .spirv32, .spirv64 => *anyopaque,
+    .powerpc64, .powerpc64le => switch (builtin.os.tag) {
+        .aix => VaListAix,
+        else => VaListCommon,
+    },
+    .sparc, .sparc64 => VaListCommon,
+    .spirv32, .spirv64 => VaListCommon,
     .s390x => VaListS390x,
-    .wasm32, .wasm64 => *anyopaque,
-    .x86 => *u8,
+    .wasm32, .wasm64 => VaListCommon,
+    .x86 => VaListCommon,
     .x86_64 => switch (builtin.os.tag) {
-        .windows => @compileError("disabled due to miscompilations"), // *u8,
+        .windows => VaListWindows,
         else => VaListX86_64,
     },
     .xtensa => VaListXtensa,

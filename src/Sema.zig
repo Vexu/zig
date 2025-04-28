@@ -22257,10 +22257,9 @@ fn zirCVaCopy(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData) 
     const va_list_src = block.builtinCallArgSrc(extra.node, 0);
 
     const va_list_ref = try sema.resolveVaListRef(block, va_list_src, extra.operand);
-    const va_list_ty = try sema.getBuiltinType(src, .VaList);
 
     try sema.requireRuntimeBlock(block, src, null);
-    return block.addTyOp(.c_va_copy, va_list_ty, va_list_ref);
+    return block.addTyOp(.c_va_copy, sema.typeOf(va_list_ref), va_list_ref);
 }
 
 fn zirCVaEnd(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData) CompileError!Air.Inst.Ref {
@@ -22279,10 +22278,12 @@ fn zirCVaStart(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData)
     const src = block.nodeOffset(src_node);
 
     const va_list_ty = try sema.getBuiltinType(src, .VaList);
+    const va_list_ptr = try sema.pt.singleMutPtrType(va_list_ty);
+
     try sema.requireRuntimeBlock(block, src, null);
     return block.addInst(.{
         .tag = .c_va_start,
-        .data = .{ .ty = va_list_ty },
+        .data = .{ .ty = va_list_ptr },
     });
 }
 
