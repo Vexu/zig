@@ -5671,7 +5671,7 @@ pub const FuncGen = struct {
                     });
                 }
 
-                if (true) @panic("TODO");
+                return self.aarch64VaArg(list, arg_ty);
             },
             .amdgcn => {
                 return self.voidPtrVaArg(list, arg_ty, .{
@@ -5687,18 +5687,6 @@ pub const FuncGen = struct {
                     .allow_higher_align = true,
                 });
             },
-            .arm, .armeb, .thumb, .thumbeb => {
-                if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
-
-                if (true) @panic("TODO");
-
-                const is_indirect = false;
-                return self.voidPtrVaArg(list, arg_ty, .{
-                    .is_indirect = is_indirect,
-                    .slot_bytes = 4,
-                    .allow_higher_align = true,
-                });
-            },
             .csky => {
                 if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
 
@@ -5707,14 +5695,6 @@ pub const FuncGen = struct {
                     .slot_bytes = o.target.ptrBitWidth() / 8,
                     .allow_higher_align = true,
                 });
-            },
-            .hexagon => {
-                if (true) @panic("TODO");
-                if (o.target.abi.isMusl()) {
-                    // vaarghexagonlinux
-                } else {
-                    // vaarghexagon
-                }
             },
             .loongarch32, .loongarch64 => {
                 if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
@@ -5727,10 +5707,6 @@ pub const FuncGen = struct {
                     .allow_higher_align = true,
                 });
             },
-            .mips, .mipsel, .mips64, .mips64el => {
-                if (true) @panic("TODO");
-                // stuff
-            },
             .nvptx, .nvptx64 => {
                 return self.voidPtrVaArg(list, arg_ty, .{
                     .is_indirect = false,
@@ -5740,7 +5716,7 @@ pub const FuncGen = struct {
             },
             .powerpc, .powerpcle => {
                 if (o.target.os.tag == .aix) {
-                    // TODO complex type special handling if added.
+                    // Note add complex type special handling if added.
                     return self.voidPtrVaArg(list, arg_ty, .{
                         .is_indirect = false,
                         .slot_bytes = 4,
@@ -5759,7 +5735,7 @@ pub const FuncGen = struct {
             },
             .powerpc64, .powerpc64le => {
                 if (o.target.os.tag == .aix) {
-                    // TODO complex type special handling if added.
+                    // Note add complex type special handling if added.
                     return self.voidPtrVaArg(list, arg_ty, .{
                         .is_indirect = false,
                         .slot_bytes = o.target.ptrBitWidth() / 8,
@@ -5767,7 +5743,7 @@ pub const FuncGen = struct {
                     });
                 }
 
-                // TODO complex type special handling if added.
+                // Note add complex type special handling if added.
                 return self.voidPtrVaArg(list, arg_ty, .{
                     .is_indirect = false,
                     .slot_bytes = 8,
@@ -5826,7 +5802,7 @@ pub const FuncGen = struct {
                         .allow_higher_align = false,
                     });
                 }
-                if (true) @panic("TODO");
+                return self.x86_64VaArg(list, arg_ty);
             },
             else => {
                 const llvm_arg_ty = try o.lowerType(arg_ty);
@@ -5867,18 +5843,10 @@ pub const FuncGen = struct {
         // Align the pointer for items with alignment bigger than the slot if
         // the calling convention allows it.
         const byte_alignment = load_alignment.toByteUnits().?;
-        const aligned_void_ptr = if (opts.allow_higher_align and byte_alignment > opts.slot_bytes) blk: {
-            // aligned_void_ptr = (void_ptr + load_alignment - 1) & -load_alignment
-            const rounded_up = try self.wip.gep(.inbounds, .i8, void_ptr, &.{
-                try o.builder.intValue(llvm_usize, byte_alignment - 1),
-            }, "");
-
-            break :blk try self.wip.callIntrinsic(.normal, .none, .ptrmask, &.{
-                .ptr, llvm_usize,
-            }, &.{
-                rounded_up, try o.builder.intValue(llvm_usize, -@as(i64, @intCast(byte_alignment))),
-            }, "");
-        } else void_ptr;
+        const aligned_void_ptr = if (opts.allow_higher_align and byte_alignment > opts.slot_bytes)
+            try self.roundPtrUpToAlignment(void_ptr, byte_alignment)
+        else
+            void_ptr;
 
         // Increment the item pointer and store it back.
         const aligned_size = std.mem.alignForward(u64, load_size, opts.slot_bytes);
@@ -5906,6 +5874,545 @@ pub const FuncGen = struct {
         }
 
         return self.load(item_ptr, item_ptr_ty);
+    }
+
+    fn aarch64VaArg(self: *FuncGen, list_ptr: Builder.Value, arg_ty: Type) !Builder.Value {
+        _ = self; // autofix
+        _ = list_ptr; // autofix
+        _ = arg_ty; // autofix
+        @panic("TODO");
+
+        // // These numbers are not used for variadic arguments, hence it doesn't matter
+        // // they don't retain their values across multiple calls to
+        // // `classifyArgumentType` here.
+        // unsigned NSRN = 0, NPRN = 0;
+        // ABIArgInfo AI =
+        //     classifyArgumentType(Ty, /*IsVariadicFn=*/true, /* IsNamedArg */ false,
+        //                         CGF.CurFnInfo->getCallingConvention(), NSRN, NPRN);
+        // // Empty records are ignored for parameter passing purposes.
+        // if (AI.isIgnore())
+        //     return Slot.asRValue();
+
+        // bool IsIndirect = AI.isIndirect();
+
+        // llvm::Type *BaseTy = CGF.ConvertType(Ty);
+        // if (IsIndirect)
+        //     BaseTy = llvm::PointerType::getUnqual(BaseTy);
+        // else if (AI.getCoerceToType())
+        //     BaseTy = AI.getCoerceToType();
+
+        // unsigned NumRegs = 1;
+        // if (llvm::ArrayType *ArrTy = dyn_cast<llvm::ArrayType>(BaseTy)) {
+        //     BaseTy = ArrTy->getElementType();
+        //     NumRegs = ArrTy->getNumElements();
+        // }
+        // bool IsFPR =
+        //     !isSoftFloat() && (BaseTy->isFloatingPointTy() || BaseTy->isVectorTy());
+
+        // // The AArch64 va_list type and handling is specified in the Procedure Call
+        // // Standard, section B.4:
+        // //
+        // // struct {
+        // //   void *__stack;
+        // //   void *__gr_top;
+        // //   void *__vr_top;
+        // //   int __gr_offs;
+        // //   int __vr_offs;
+        // // };
+
+        // llvm::BasicBlock *MaybeRegBlock = CGF.createBasicBlock("vaarg.maybe_reg");
+        // llvm::BasicBlock *InRegBlock = CGF.createBasicBlock("vaarg.in_reg");
+        // llvm::BasicBlock *OnStackBlock = CGF.createBasicBlock("vaarg.on_stack");
+        // llvm::BasicBlock *ContBlock = CGF.createBasicBlock("vaarg.end");
+
+        // CharUnits TySize = getContext().getTypeSizeInChars(Ty);
+        // CharUnits TyAlign = getContext().getTypeUnadjustedAlignInChars(Ty);
+
+        // Address reg_offs_p = Address::invalid();
+        // llvm::Value *reg_offs = nullptr;
+        // int reg_top_index;
+        // int RegSize = IsIndirect ? 8 : TySize.getQuantity();
+        // if (!IsFPR) {
+        //     // 3 is the field number of __gr_offs
+        //     reg_offs_p = CGF.Builder.CreateStructGEP(VAListAddr, 3, "gr_offs_p");
+        //     reg_offs = CGF.Builder.CreateLoad(reg_offs_p, "gr_offs");
+        //     reg_top_index = 1; // field number for __gr_top
+        //     RegSize = llvm::alignTo(RegSize, 8);
+        // } else {
+        //     // 4 is the field number of __vr_offs.
+        //     reg_offs_p = CGF.Builder.CreateStructGEP(VAListAddr, 4, "vr_offs_p");
+        //     reg_offs = CGF.Builder.CreateLoad(reg_offs_p, "vr_offs");
+        //     reg_top_index = 2; // field number for __vr_top
+        //     RegSize = 16 * NumRegs;
+        // }
+
+        // //=======================================
+        // // Find out where argument was passed
+        // //=======================================
+
+        // // If reg_offs >= 0 we're already using the stack for this type of
+        // // argument. We don't want to keep updating reg_offs (in case it overflows,
+        // // though anyone passing 2GB of arguments, each at most 16 bytes, deserves
+        // // whatever they get).
+        // llvm::Value *UsingStack = nullptr;
+        // UsingStack = CGF.Builder.CreateICmpSGE(
+        //     reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, 0));
+
+        // CGF.Builder.CreateCondBr(UsingStack, OnStackBlock, MaybeRegBlock);
+
+        // // Otherwise, at least some kind of argument could go in these registers, the
+        // // question is whether this particular type is too big.
+        // CGF.EmitBlock(MaybeRegBlock);
+
+        // // Integer arguments may need to correct register alignment (for example a
+        // // "struct { __int128 a; };" gets passed in x_2N, x_{2N+1}). In this case we
+        // // align __gr_offs to calculate the potential address.
+        // if (!IsFPR && !IsIndirect && TyAlign.getQuantity() > 8) {
+        //     int Align = TyAlign.getQuantity();
+
+        //     reg_offs = CGF.Builder.CreateAdd(
+        //         reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, Align - 1),
+        //         "align_regoffs");
+        //     reg_offs = CGF.Builder.CreateAnd(
+        //         reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, -Align),
+        //         "aligned_regoffs");
+        // }
+
+        // // Update the gr_offs/vr_offs pointer for next call to va_arg on this va_list.
+        // // The fact that this is done unconditionally reflects the fact that
+        // // allocating an argument to the stack also uses up all the remaining
+        // // registers of the appropriate kind.
+        // llvm::Value *NewOffset = nullptr;
+        // NewOffset = CGF.Builder.CreateAdd(
+        //     reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, RegSize), "new_reg_offs");
+        // CGF.Builder.CreateStore(NewOffset, reg_offs_p);
+
+        // // Now we're in a position to decide whether this argument really was in
+        // // registers or not.
+        // llvm::Value *InRegs = nullptr;
+        // InRegs = CGF.Builder.CreateICmpSLE(
+        //     NewOffset, llvm::ConstantInt::get(CGF.Int32Ty, 0), "inreg");
+
+        // CGF.Builder.CreateCondBr(InRegs, InRegBlock, OnStackBlock);
+
+        // //=======================================
+        // // Argument was in registers
+        // //=======================================
+
+        // // Now we emit the code for if the argument was originally passed in
+        // // registers. First start the appropriate block:
+        // CGF.EmitBlock(InRegBlock);
+
+        // llvm::Value *reg_top = nullptr;
+        // Address reg_top_p =
+        //     CGF.Builder.CreateStructGEP(VAListAddr, reg_top_index, "reg_top_p");
+        // reg_top = CGF.Builder.CreateLoad(reg_top_p, "reg_top");
+        // Address BaseAddr(CGF.Builder.CreateInBoundsGEP(CGF.Int8Ty, reg_top, reg_offs),
+        //                 CGF.Int8Ty, CharUnits::fromQuantity(IsFPR ? 16 : 8));
+        // Address RegAddr = Address::invalid();
+        // llvm::Type *MemTy = CGF.ConvertTypeForMem(Ty), *ElementTy = MemTy;
+
+        // if (IsIndirect) {
+        //     // If it's been passed indirectly (actually a struct), whatever we find from
+        //     // stored registers or on the stack will actually be a struct **.
+        //     MemTy = llvm::PointerType::getUnqual(MemTy);
+        // }
+
+        // const Type *Base = nullptr;
+        // uint64_t NumMembers = 0;
+        // bool IsHFA = isHomogeneousAggregate(Ty, Base, NumMembers);
+        // if (IsHFA && NumMembers > 1) {
+        //     // Homogeneous aggregates passed in registers will have their elements split
+        //     // and stored 16-bytes apart regardless of size (they're notionally in qN,
+        //     // qN+1, ...). We reload and store into a temporary local variable
+        //     // contiguously.
+        //     assert(!IsIndirect && "Homogeneous aggregates should be passed directly");
+        //     auto BaseTyInfo = getContext().getTypeInfoInChars(QualType(Base, 0));
+        //     llvm::Type *BaseTy = CGF.ConvertType(QualType(Base, 0));
+        //     llvm::Type *HFATy = llvm::ArrayType::get(BaseTy, NumMembers);
+        //     Address Tmp = CGF.CreateTempAlloca(HFATy,
+        //                                     std::max(TyAlign, BaseTyInfo.Align));
+
+        //     // On big-endian platforms, the value will be right-aligned in its slot.
+        //     int Offset = 0;
+        //     if (CGF.CGM.getDataLayout().isBigEndian() &&
+        //         BaseTyInfo.Width.getQuantity() < 16)
+        //     Offset = 16 - BaseTyInfo.Width.getQuantity();
+
+        //     for (unsigned i = 0; i < NumMembers; ++i) {
+        //     CharUnits BaseOffset = CharUnits::fromQuantity(16 * i + Offset);
+        //     Address LoadAddr =
+        //         CGF.Builder.CreateConstInBoundsByteGEP(BaseAddr, BaseOffset);
+        //     LoadAddr = LoadAddr.withElementType(BaseTy);
+
+        //     Address StoreAddr = CGF.Builder.CreateConstArrayGEP(Tmp, i);
+
+        //     llvm::Value *Elem = CGF.Builder.CreateLoad(LoadAddr);
+        //     CGF.Builder.CreateStore(Elem, StoreAddr);
+        //     }
+
+        //     RegAddr = Tmp.withElementType(MemTy);
+        // } else {
+        //     // Otherwise the object is contiguous in memory.
+
+        //     // It might be right-aligned in its slot.
+        //     CharUnits SlotSize = BaseAddr.getAlignment();
+        //     if (CGF.CGM.getDataLayout().isBigEndian() && !IsIndirect &&
+        //         (IsHFA || !isAggregateTypeForABI(Ty)) &&
+        //         TySize < SlotSize) {
+        //     CharUnits Offset = SlotSize - TySize;
+        //     BaseAddr = CGF.Builder.CreateConstInBoundsByteGEP(BaseAddr, Offset);
+        //     }
+
+        //     RegAddr = BaseAddr.withElementType(MemTy);
+        // }
+
+        // CGF.EmitBranch(ContBlock);
+
+        // //=======================================
+        // // Argument was on the stack
+        // //=======================================
+        // CGF.EmitBlock(OnStackBlock);
+
+        // Address stack_p = CGF.Builder.CreateStructGEP(VAListAddr, 0, "stack_p");
+        // llvm::Value *OnStackPtr = CGF.Builder.CreateLoad(stack_p, "stack");
+
+        // // Again, stack arguments may need realignment. In this case both integer and
+        // // floating-point ones might be affected.
+        // if (!IsIndirect && TyAlign.getQuantity() > 8) {
+        //     OnStackPtr = emitRoundPointerUpToAlignment(CGF, OnStackPtr, TyAlign);
+        // }
+        // Address OnStackAddr = Address(OnStackPtr, CGF.Int8Ty,
+        //                                 std::max(CharUnits::fromQuantity(8), TyAlign));
+
+        // // All stack slots are multiples of 8 bytes.
+        // CharUnits StackSlotSize = CharUnits::fromQuantity(8);
+        // CharUnits StackSize;
+        // if (IsIndirect)
+        //     StackSize = StackSlotSize;
+        // else
+        //     StackSize = TySize.alignTo(StackSlotSize);
+
+        // llvm::Value *StackSizeC = CGF.Builder.getSize(StackSize);
+        // llvm::Value *NewStack = CGF.Builder.CreateInBoundsGEP(
+        //     CGF.Int8Ty, OnStackPtr, StackSizeC, "new_stack");
+
+        // // Write the new value of __stack for the next call to va_arg
+        // CGF.Builder.CreateStore(NewStack, stack_p);
+
+        // if (CGF.CGM.getDataLayout().isBigEndian() && !isAggregateTypeForABI(Ty) &&
+        //     TySize < StackSlotSize) {
+        //     CharUnits Offset = StackSlotSize - TySize;
+        //     OnStackAddr = CGF.Builder.CreateConstInBoundsByteGEP(OnStackAddr, Offset);
+        // }
+
+        // OnStackAddr = OnStackAddr.withElementType(MemTy);
+
+        // CGF.EmitBranch(ContBlock);
+
+        // //=======================================
+        // // Tidy up
+        // //=======================================
+        // CGF.EmitBlock(ContBlock);
+
+        // Address ResAddr = emitMergePHI(CGF, RegAddr, InRegBlock, OnStackAddr,
+        //                                 OnStackBlock, "vaargs.addr");
+
+        // if (IsIndirect)
+        //     return CGF.EmitLoadOfAnyValue(
+        //         CGF.MakeAddrLValue(
+        //             Address(CGF.Builder.CreateLoad(ResAddr, "vaarg.addr"), ElementTy,
+        //                     TyAlign),
+        //             Ty),
+        //         Slot);
+
+        // return CGF.EmitLoadOfAnyValue(CGF.MakeAddrLValue(ResAddr, Ty), Slot);
+    }
+
+    fn x86_64VaArg(self: *FuncGen, list_ptr: Builder.Value, arg_ty: Type) !Builder.Value {
+        const o = self.ng.object;
+        const pt = o.pt;
+        const zcu = pt.zcu;
+        const arg_alignment = arg_ty.abiAlignment(pt.zcu);
+        const item_ptr_ty = try pt.ptrType(.{
+            .child = arg_ty.toIntern(),
+            .flags = .{ .alignment = arg_alignment },
+        });
+
+        if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+        const classes = x86_64_abi.classifySystemV(arg_ty, zcu, &o.target, .arg);
+
+        // 1. Determine whether arg_ty may be passed in the registers. If not go to step 7.
+        if (classes[0] == .memory) {
+            const item_ptr = try self.x86_64VaArgMemory(list_ptr, arg_ty);
+            return self.load(item_ptr, item_ptr_ty);
+        }
+
+        // 2. Compute num_gp to hold the number of general purpose registers needed to pass type
+        //    and num_fp to hold the number of floating point registers needed.
+        var num_gp: u8 = 0;
+        var num_fp: u8 = 0;
+        for (classes) |class| switch (class) {
+            .integer, .win_i128 => num_gp += 1,
+            .sse,
+            .sseup,
+            .x87up,
+            .float_combine,
+            => num_fp += 1,
+            else => {},
+        };
+
+        // 3. Verify whether arguments fit into registers. In the case:
+        //        l->gp_offset > 48 - num_gp * 8
+        //    or
+        //        l->fp_offset > 304 - num_fp * 16
+        //    go to step 7.
+        //
+        // NOTE: 304 is a typo, there are (6 * 8 + 8 * 16) = 176 bytes of
+        //    register save space).
+
+        var in_regs: ?Builder.Value = null;
+        var gp_offset_p: Builder.Value = undefined;
+        var gp_offset: Builder.Value = undefined;
+        var fp_offset_p: Builder.Value = undefined;
+        var fp_offset: Builder.Value = undefined;
+
+        if (num_gp > 0) {
+            gp_offset_p = try self.wip.gep(.inbounds, .i8, list_ptr, &.{
+                try o.builder.intValue(.i64, 0),
+            }, "");
+            gp_offset = try self.wip.load(.normal, .i32, gp_offset_p, .fromByteUnits(4), "");
+
+            const available = try o.builder.intValue(.i32, 48 - num_gp * 8);
+            in_regs = try self.wip.icmp(.ule, gp_offset, available, "");
+        }
+
+        if (num_fp > 0) {
+            fp_offset_p = try self.wip.gep(.inbounds, .i8, list_ptr, &.{
+                try o.builder.intValue(.i64, 4),
+            }, "");
+            fp_offset = try self.wip.load(.normal, .i32, fp_offset_p, .fromByteUnits(4), "");
+
+            const available = try o.builder.intValue(.i32, 176 - num_fp * 16);
+            const fits = try self.wip.icmp(.ule, fp_offset, available, "");
+            if (in_regs) |some|
+                in_regs = try self.wip.bin(.@"and", some, fits, "")
+            else
+                in_regs = fits;
+        }
+
+        const in_reg_block = try self.wip.block(1, "va_arg.in_reg");
+        const in_mem_block = try self.wip.block(1, "va_arg.in_mem");
+        const end_block = try self.wip.block(2, "va_arg.end");
+        _ = try self.wip.brCond(in_regs.?, in_reg_block, in_mem_block, .none);
+
+        self.wip.cursor = .{ .block = in_mem_block };
+        const in_mem_ptr = try self.x86_64VaArgMemory(list_ptr, arg_ty);
+        _ = try self.wip.br(end_block);
+
+        self.wip.cursor = .{ .block = in_reg_block };
+
+        // 4. Fetch type from l->reg_save_area with an offset of l->gp_offset and/or
+        //    l->fp_offset. This may require copying to a temporary location in case the
+        //    parameter is passed in different register classes or requires an alignment greater
+        //    than 8 for general purpose registers and 16 for XMM registers.
+
+        // llvm::Type *LTy = CGF.ConvertTypeForMem(Ty);
+        const reg_save_area_p = try self.wip.gep(.inbounds, .i8, list_ptr, &.{
+            try o.builder.intValue(.i64, 16),
+        }, "");
+
+        var in_reg_ptr: Builder.Value = undefined;
+        if (num_gp > 0 and num_fp > 0) {
+            in_reg_ptr = try self.buildAllocaWorkaround(arg_ty, arg_alignment.toLlvm());
+
+            const gp_addr = try self.wip.gep(.inbounds, .i8, reg_save_area_p, &.{gp_offset}, "");
+            const fp_addr = try self.wip.gep(.inbounds, .i8, reg_save_area_p, &.{fp_offset}, "");
+
+            const lo_ty: Builder.Type = if (classes[0] == .integer) .i64 else .double;
+            const hi_ty: Builder.Type = if (classes[0] == .integer) .double else .i64;
+
+            const lo_ptr = if (classes[0] == .integer) gp_addr else fp_addr;
+            const hi_ptr = if (classes[0] == .integer) fp_addr else gp_addr;
+
+            const lo_val = try self.wip.load(.normal, lo_ty, lo_ptr, .fromByteUnits(8), "");
+            const lo_gep = try self.wip.gep(.inbounds, .i8, in_reg_ptr, &.{
+                try o.builder.intValue(.i64, if (classes[0] == .integer) @as(u32, 0) else 8),
+            }, "");
+            _ = try self.wip.store(.normal, lo_val, lo_gep, .fromByteUnits(8));
+
+            const hi_val = try self.wip.load(.normal, hi_ty, hi_ptr, .fromByteUnits(8), "");
+            const hi_gep = try self.wip.gep(.inbounds, .i8, in_reg_ptr, &.{
+                try o.builder.intValue(.i64, if (classes[0] == .integer) @as(u32, 8) else 0),
+            }, "");
+            _ = try self.wip.store(.normal, hi_val, hi_gep, .fromByteUnits(8));
+        } else {
+            @panic("TODO");
+        }
+        //else if (neededInt || neededSSE == 1) {
+        //     // Copy to a temporary if necessary to ensure the appropriate alignment.
+        //     auto TInfo = getContext().getTypeInfoInChars(Ty);
+        //     uint64_t TySize = TInfo.Width.getQuantity();
+        //     CharUnits TyAlign = TInfo.Align;
+        //     llvm::Type *CoTy = nullptr;
+        //     if (AI.isDirect())
+        //     CoTy = AI.getCoerceToType();
+
+        //     llvm::Value *GpOrFpOffset = neededInt ? gp_offset : fp_offset;
+        //     uint64_t Alignment = neededInt ? 8 : 16;
+        //     uint64_t RegSize = neededInt ? neededInt * 8 : 16;
+        //     // There are two cases require special handling:
+        //     // 1)
+        //     //    ```
+        //     //    struct {
+        //     //      struct {} a[8];
+        //     //      int b;
+        //     //    };
+        //     //    ```
+        //     //    The lower 8 bytes of the structure are not stored,
+        //     //    so an 8-byte offset is needed when accessing the structure.
+        //     // 2)
+        //     //   ```
+        //     //   struct {
+        //     //     long long a;
+        //     //     struct {} b;
+        //     //   };
+        //     //   ```
+        //     //   The stored size of this structure is smaller than its actual size,
+        //     //   which may lead to reading past the end of the register save area.
+        //     if (CoTy && (AI.getDirectOffset() == 8 || RegSize < TySize)) {
+        //     Address Tmp = CGF.CreateMemTemp(Ty);
+        //     llvm::Value *Addr =
+        //         CGF.Builder.CreateGEP(CGF.Int8Ty, RegSaveArea, GpOrFpOffset);
+        //     llvm::Value *Src = CGF.Builder.CreateAlignedLoad(CoTy, Addr, TyAlign);
+        //     llvm::Value *PtrOffset =
+        //         llvm::ConstantInt::get(CGF.Int32Ty, AI.getDirectOffset());
+        //     Address Dst = Address(
+        //         CGF.Builder.CreateGEP(CGF.Int8Ty, Tmp.getBasePointer(), PtrOffset),
+        //         LTy, TyAlign);
+        //     CGF.Builder.CreateStore(Src, Dst);
+        //     RegAddr = Tmp.withElementType(LTy);
+        //     } else {
+        //     RegAddr =
+        //         Address(CGF.Builder.CreateGEP(CGF.Int8Ty, RegSaveArea, GpOrFpOffset),
+        //                 LTy, CharUnits::fromQuantity(Alignment));
+
+        //     // Copy into a temporary if the type is more aligned than the
+        //     // register save area.
+        //     if (neededInt && TyAlign.getQuantity() > 8) {
+        //         Address Tmp = CGF.CreateMemTemp(Ty);
+        //         CGF.Builder.CreateMemCpy(Tmp, RegAddr, TySize, false);
+        //         RegAddr = Tmp;
+        //     }
+        //     }
+
+        // } else {
+        //     assert(neededSSE == 2 && "Invalid number of needed registers!");
+        //     // SSE registers are spaced 16 bytes apart in the register save
+        //     // area, we need to collect the two eightbytes together.
+        //     // The ABI isn't explicit about this, but it seems reasonable
+        //     // to assume that the slots are 16-byte aligned, since the stack is
+        //     // naturally 16-byte aligned and the prologue is expected to store
+        //     // all the SSE registers to the RSA.
+        //     Address RegAddrLo = Address(CGF.Builder.CreateGEP(CGF.Int8Ty, RegSaveArea,
+        //                                                     fp_offset),
+        //                                 CGF.Int8Ty, CharUnits::fromQuantity(16));
+        //     Address RegAddrHi =
+        //     CGF.Builder.CreateConstInBoundsByteGEP(RegAddrLo,
+        //                                             CharUnits::fromQuantity(16));
+        //     llvm::Type *ST = AI.canHaveCoerceToType()
+        //                         ? AI.getCoerceToType()
+        //                         : llvm::StructType::get(CGF.DoubleTy, CGF.DoubleTy);
+        //     llvm::Value *V;
+        //     Address Tmp = CGF.CreateMemTemp(Ty);
+        //     Tmp = Tmp.withElementType(ST);
+        //     V = CGF.Builder.CreateLoad(
+        //         RegAddrLo.withElementType(ST->getStructElementType(0)));
+        //     CGF.Builder.CreateStore(V, CGF.Builder.CreateStructGEP(Tmp, 0));
+        //     V = CGF.Builder.CreateLoad(
+        //         RegAddrHi.withElementType(ST->getStructElementType(1)));
+        //     CGF.Builder.CreateStore(V, CGF.Builder.CreateStructGEP(Tmp, 1));
+
+        //     RegAddr = Tmp.withElementType(LTy);
+        // }
+
+        // 5. Set:
+        //        l->gp_offset = l->gp_offset + num_gp * 8
+        //        l->fp_offset = l->fp_offset + num_fp * 16.
+        if (num_gp > 0) {
+            const added = try o.builder.intValue(.i32, num_gp * 8);
+            const new_offset = try self.wip.bin(.add, gp_offset, added, "");
+            _ = try self.wip.store(.normal, new_offset, gp_offset_p, .fromByteUnits(4));
+        }
+        if (num_fp > 0) {
+            const added = try o.builder.intValue(.i32, num_fp * 16);
+            const new_offset = try self.wip.bin(.add, fp_offset, added, "");
+            _ = try self.wip.store(.normal, new_offset, fp_offset_p, .fromByteUnits(4));
+        }
+        _ = try self.wip.br(end_block);
+
+        // 6. Return the fetched type.
+        self.wip.cursor = .{ .block = end_block };
+        const phi = try self.wip.phi(.ptr, "");
+        phi.finish(
+            &.{ in_reg_ptr, in_mem_ptr },
+            &.{ in_reg_block, in_mem_block },
+            &self.wip,
+        );
+        return self.load(phi.toValue(), item_ptr_ty);
+    }
+
+    fn x86_64VaArgMemory(self: *FuncGen, list_ptr: Builder.Value, arg_ty: Type) !Builder.Value {
+        const o = self.ng.object;
+        const pt = o.pt;
+        const zcu = pt.zcu;
+        const llvm_usize = try o.lowerType(Type.usize);
+        const ptr_alignment = Type.ptrAbiAlignment(o.target).toLlvm();
+
+        const arg_alignment = arg_ty.abiAlignment(pt.zcu);
+        const arg_alignment_bytes = arg_alignment.toByteUnits().?;
+
+        const overflow_arg_area_p = try self.wip.gep(.inbounds, .i8, list_ptr, &.{
+            try o.builder.intValue(llvm_usize, 16),
+        }, "");
+        var overflow_arg_area = try self.wip.load(.normal, .ptr, overflow_arg_area_p, ptr_alignment, "");
+
+        // 7. Align l->overflow_arg_area upwards to a 16 byte boundary if alignment needed by
+        //    type exceeds 8 byte boundary.
+        if (arg_alignment_bytes > 8) {
+            overflow_arg_area = try self.roundPtrUpToAlignment(overflow_arg_area, arg_alignment_bytes);
+        }
+
+        // 8. Fetch type from l->overflow_arg_area.
+        const item_ptr = overflow_arg_area;
+
+        // 9. Set l->overflow_arg_area to:
+        //        l->overflow_arg_area + sizeof(type)
+        // 10. Align l->overflow_arg_area upwards to an 8 byte boundary.
+        const offset = std.mem.alignForward(u64, arg_ty.abiSize(zcu), 8);
+        overflow_arg_area = try self.wip.gep(.inbounds, .i8, overflow_arg_area, &.{
+            try o.builder.intValue(llvm_usize, offset),
+        }, "");
+        _ = try self.wip.store(.normal, overflow_arg_area, overflow_arg_area_p, ptr_alignment);
+
+        // 11. Return the fetched type.
+        return item_ptr;
+    }
+
+    fn roundPtrUpToAlignment(self: *FuncGen, ptr: Builder.Value, alignment: u64) !Builder.Value {
+        const o = self.ng.object;
+        const llvm_usize = try o.lowerType(Type.usize);
+
+        // aligned_ptr = (ptr + alignment - 1) & -alignment
+        const rounded_up = try self.wip.gep(.inbounds, .i8, ptr, &.{
+            try o.builder.intValue(llvm_usize, alignment - 1),
+        }, "");
+
+        return self.wip.callIntrinsic(.normal, .none, .ptrmask, &.{
+            .ptr, llvm_usize,
+        }, &.{
+            rounded_up, try o.builder.intValue(llvm_usize, -@as(i64, @intCast(alignment))),
+        }, "");
     }
 
     fn airCVaCopy(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
