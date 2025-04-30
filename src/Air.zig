@@ -835,9 +835,6 @@ pub const Inst = struct {
         /// Uses the `vector_store_elem` field.
         vector_store_elem,
 
-        /// Implements @cVaArg builtin.
-        /// Uses the `ty_op` field.
-        c_va_arg,
         /// Implements @cVaCopy builtin.
         /// Uses the `ty_op` field.
         c_va_copy,
@@ -1499,7 +1496,6 @@ pub fn typeOfIndex(air: *const Air, inst: Air.Inst.Index, ip: *const InternPool)
         .byte_swap,
         .bit_reverse,
         .addrspace_cast,
-        .c_va_arg,
         .c_va_copy,
         .abs,
         => return datas[@intFromEnum(inst)].ty_op.ty.toType(),
@@ -1707,7 +1703,6 @@ pub fn mustLower(air: Air, inst: Air.Inst.Index, ip: *const InternPool) bool {
         .wasm_memory_grow,
         .set_err_return_trace,
         .vector_store_elem,
-        .c_va_arg,
         .c_va_copy,
         .c_va_end,
         .c_va_start,

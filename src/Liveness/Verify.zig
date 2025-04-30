@@ -115,7 +115,6 @@ fn verifyBody(self: *Verify, body: []const Air.Inst.Index) Error!void {
             .splat,
             .error_set_has_value,
             .addrspace_cast,
-            .c_va_arg,
             .c_va_copy,
             .abs,
             => {

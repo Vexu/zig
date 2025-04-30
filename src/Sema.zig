@@ -1380,7 +1380,6 @@ fn analyzeBodyInner(
                     .reify              => try sema.zirReify(             block, extended, inst),
                     .builtin_async_call => try sema.zirBuiltinAsyncCall(  block, extended),
                     .cmpxchg            => try sema.zirCmpxchg(           block, extended),
-                    .c_va_arg           => try sema.zirCVaArg(            block, extended),
                     .c_va_copy          => try sema.zirCVaCopy(           block, extended),
                     .c_va_end           => try sema.zirCVaEnd(            block, extended),
                     .c_va_start         => try sema.zirCVaStart(          block, extended),
@@ -22223,32 +22222,6 @@ fn resolveVaListRef(sema: *Sema, block: *Block, src: LazySrcLoc, zir_ref: Zir.In
 
     const inst = try sema.resolveInst(zir_ref);
     return sema.coerce(block, va_list_ptr, inst, src);
-}
-
-fn zirCVaArg(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData) CompileError!Air.Inst.Ref {
-    const extra = sema.code.extraData(Zir.Inst.BinNode, extended.operand).data;
-    const src = block.nodeOffset(extra.node);
-    const va_list_src = block.builtinCallArgSrc(extra.node, 0);
-    const ty_src = block.builtinCallArgSrc(extra.node, 1);
-
-    const va_list_ref = try sema.resolveVaListRef(block, va_list_src, extra.lhs);
-    const arg_ty = try sema.resolveType(block, ty_src, extra.rhs);
-
-    if (!try sema.validateExternType(arg_ty, .param_ty)) {
-        const msg = msg: {
-            const msg = try sema.errMsg(ty_src, "cannot get '{}' from variadic argument", .{arg_ty.fmt(sema.pt)});
-            errdefer msg.destroy(sema.gpa);
-
-            try sema.explainWhyTypeIsNotExtern(msg, ty_src, arg_ty, .param_ty);
-
-            try sema.addDeclaredHereNote(msg, arg_ty);
-            break :msg msg;
-        };
-        return sema.failWithOwnedErrorMsg(block, msg);
-    }
-
-    try sema.requireRuntimeBlock(block, src, null);
-    return block.addTyOp(.c_va_arg, arg_ty, va_list_ref);
 }
 
 fn zirCVaCopy(sema: *Sema, block: *Block, extended: Zir.Inst.Extended.InstData) CompileError!Air.Inst.Ref {

@@ -599,7 +599,6 @@ const Writer = struct {
             .error_cast,
             .wasm_memory_grow,
             .prefetch,
-            .c_va_arg,
             => {
                 const inst_data = self.code.extraData(Zir.Inst.BinNode, extended.operand).data;
                 try self.writeInstRef(stream, inst_data.lhs);

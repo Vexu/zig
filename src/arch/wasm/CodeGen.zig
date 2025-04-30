@@ -2057,7 +2057,6 @@ fn genInst(cg: *CodeGen, inst: Air.Inst.Index) InnerError!void {
         .is_named_enum_value,
         .addrspace_cast,
         .vector_store_elem,
-        .c_va_arg,
         .c_va_copy,
         .c_va_end,
         .c_va_start,

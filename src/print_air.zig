@@ -256,7 +256,6 @@ const Writer = struct {
             .abs,
             .error_set_has_value,
             .addrspace_cast,
-            .c_va_arg,
             .c_va_copy,
             => try w.writeTyOp(s, inst),
 

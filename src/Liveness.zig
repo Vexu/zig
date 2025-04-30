@@ -377,7 +377,6 @@ pub fn categorizeOperand(
         .splat,
         .error_set_has_value,
         .addrspace_cast,
-        .c_va_arg,
         .c_va_copy,
         .abs,
         => {
@@ -1010,7 +1009,6 @@ fn analyzeInst(
         .splat,
         .error_set_has_value,
         .addrspace_cast,
-        .c_va_arg,
         .c_va_copy,
         .abs,
         => {

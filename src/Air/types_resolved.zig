@@ -133,7 +133,6 @@ fn checkBody(air: Air, body: []const Air.Inst.Index, zcu: *Zcu) bool {
             .splat,
             .error_set_has_value,
             .addrspace_cast,
-            .c_va_arg,
             .c_va_copy,
             => {
                 if (!checkType(data.ty_op.ty.toType(), zcu)) return false;

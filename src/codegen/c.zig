@@ -3453,7 +3453,6 @@ fn genBodyInner(f: *Function, body: []const Air.Inst.Index) error{ AnalysisFail,
             .vector_store_elem => return f.fail("TODO: C backend: implement vector_store_elem", .{}),
 
             .c_va_start => try airCVaStart(f, inst),
-            .c_va_arg => try airCVaArg(f, inst),
             .c_va_end => try airCVaEnd(f, inst),
             .c_va_copy => try airCVaCopy(f, inst),
 
@@ -7638,24 +7637,6 @@ fn airCVaStart(f: *Function, inst: Air.Inst.Index) !CValue {
         try writer.writeAll(", ");
         try f.writeCValue(writer, .{ .arg = function_info.param_ctypes.len - 1 }, .FunctionArgument);
     }
-    try writer.writeAll(");\n");
-    return local;
-}
-
-fn airCVaArg(f: *Function, inst: Air.Inst.Index) !CValue {
-    const ty_op = f.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
-
-    const inst_ty = f.typeOfIndex(inst);
-    const va_list = try f.resolveInst(ty_op.operand);
-    try reap(f, inst, &.{ty_op.operand});
-
-    const writer = f.object.writer();
-    const local = try f.allocLocal(inst, inst_ty);
-    try f.writeCValue(writer, local, .Other);
-    try writer.writeAll(" = va_arg(*(va_list *)");
-    try f.writeCValue(writer, va_list, .Other);
-    try writer.writeAll(", ");
-    try f.renderType(writer, ty_op.ty.toType());
     try writer.writeAll(");\n");
     return local;
 }
