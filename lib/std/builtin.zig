@@ -901,6 +901,252 @@ pub const VaListAarch64 = extern struct {
     __vr_top: *anyopaque,
     __gr_offs: c_int,
     __vr_offs: c_int,
+
+    // // These numbers are not used for variadic arguments, hence it doesn't matter
+    // // they don't retain their values across multiple calls to
+    // // `classifyArgumentType` here.
+    // unsigned NSRN = 0, NPRN = 0;
+    // ABIArgInfo AI =
+    //     classifyArgumentType(Ty, /*IsVariadicFn=*/true, /* IsNamedArg */ false,
+    //                         CGF.CurFnInfo->getCallingConvention(), NSRN, NPRN);
+    // // Empty records are ignored for parameter passing purposes.
+    // if (AI.isIgnore())
+    //     return Slot.asRValue();
+
+    // bool IsIndirect = AI.isIndirect();
+
+    // llvm::Type *BaseTy = CGF.ConvertType(Ty);
+    // if (IsIndirect)
+    //     BaseTy = llvm::PointerType::getUnqual(BaseTy);
+    // else if (AI.getCoerceToType())
+    //     BaseTy = AI.getCoerceToType();
+
+    // unsigned NumRegs = 1;
+    // if (llvm::ArrayType *ArrTy = dyn_cast<llvm::ArrayType>(BaseTy)) {
+    //     BaseTy = ArrTy->getElementType();
+    //     NumRegs = ArrTy->getNumElements();
+    // }
+    // bool IsFPR =
+    //     !isSoftFloat() && (BaseTy->isFloatingPointTy() || BaseTy->isVectorTy());
+
+    // // The AArch64 va_list type and handling is specified in the Procedure Call
+    // // Standard, section B.4:
+    // //
+    // // struct {
+    // //   void *__stack;
+    // //   void *__gr_top;
+    // //   void *__vr_top;
+    // //   int __gr_offs;
+    // //   int __vr_offs;
+    // // };
+
+    // llvm::BasicBlock *MaybeRegBlock = CGF.createBasicBlock("vaarg.maybe_reg");
+    // llvm::BasicBlock *InRegBlock = CGF.createBasicBlock("vaarg.in_reg");
+    // llvm::BasicBlock *OnStackBlock = CGF.createBasicBlock("vaarg.on_stack");
+    // llvm::BasicBlock *ContBlock = CGF.createBasicBlock("vaarg.end");
+
+    // CharUnits TySize = getContext().getTypeSizeInChars(Ty);
+    // CharUnits TyAlign = getContext().getTypeUnadjustedAlignInChars(Ty);
+
+    // Address reg_offs_p = Address::invalid();
+    // llvm::Value *reg_offs = nullptr;
+    // int reg_top_index;
+    // int RegSize = IsIndirect ? 8 : TySize.getQuantity();
+    // if (!IsFPR) {
+    //     // 3 is the field number of __gr_offs
+    //     reg_offs_p = CGF.Builder.CreateStructGEP(VAListAddr, 3, "gr_offs_p");
+    //     reg_offs = CGF.Builder.CreateLoad(reg_offs_p, "gr_offs");
+    //     reg_top_index = 1; // field number for __gr_top
+    //     RegSize = llvm::alignTo(RegSize, 8);
+    // } else {
+    //     // 4 is the field number of __vr_offs.
+    //     reg_offs_p = CGF.Builder.CreateStructGEP(VAListAddr, 4, "vr_offs_p");
+    //     reg_offs = CGF.Builder.CreateLoad(reg_offs_p, "vr_offs");
+    //     reg_top_index = 2; // field number for __vr_top
+    //     RegSize = 16 * NumRegs;
+    // }
+
+    // //=======================================
+    // // Find out where argument was passed
+    // //=======================================
+
+    // // If reg_offs >= 0 we're already using the stack for this type of
+    // // argument. We don't want to keep updating reg_offs (in case it overflows,
+    // // though anyone passing 2GB of arguments, each at most 16 bytes, deserves
+    // // whatever they get).
+    // llvm::Value *UsingStack = nullptr;
+    // UsingStack = CGF.Builder.CreateICmpSGE(
+    //     reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, 0));
+
+    // CGF.Builder.CreateCondBr(UsingStack, OnStackBlock, MaybeRegBlock);
+
+    // // Otherwise, at least some kind of argument could go in these registers, the
+    // // question is whether this particular type is too big.
+    // CGF.EmitBlock(MaybeRegBlock);
+
+    // // Integer arguments may need to correct register alignment (for example a
+    // // "struct { __int128 a; };" gets passed in x_2N, x_{2N+1}). In this case we
+    // // align __gr_offs to calculate the potential address.
+    // if (!IsFPR && !IsIndirect && TyAlign.getQuantity() > 8) {
+    //     int Align = TyAlign.getQuantity();
+
+    //     reg_offs = CGF.Builder.CreateAdd(
+    //         reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, Align - 1),
+    //         "align_regoffs");
+    //     reg_offs = CGF.Builder.CreateAnd(
+    //         reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, -Align),
+    //         "aligned_regoffs");
+    // }
+
+    // // Update the gr_offs/vr_offs pointer for next call to va_arg on this va_list.
+    // // The fact that this is done unconditionally reflects the fact that
+    // // allocating an argument to the stack also uses up all the remaining
+    // // registers of the appropriate kind.
+    // llvm::Value *NewOffset = nullptr;
+    // NewOffset = CGF.Builder.CreateAdd(
+    //     reg_offs, llvm::ConstantInt::get(CGF.Int32Ty, RegSize), "new_reg_offs");
+    // CGF.Builder.CreateStore(NewOffset, reg_offs_p);
+
+    // // Now we're in a position to decide whether this argument really was in
+    // // registers or not.
+    // llvm::Value *InRegs = nullptr;
+    // InRegs = CGF.Builder.CreateICmpSLE(
+    //     NewOffset, llvm::ConstantInt::get(CGF.Int32Ty, 0), "inreg");
+
+    // CGF.Builder.CreateCondBr(InRegs, InRegBlock, OnStackBlock);
+
+    // //=======================================
+    // // Argument was in registers
+    // //=======================================
+
+    // // Now we emit the code for if the argument was originally passed in
+    // // registers. First start the appropriate block:
+    // CGF.EmitBlock(InRegBlock);
+
+    // llvm::Value *reg_top = nullptr;
+    // Address reg_top_p =
+    //     CGF.Builder.CreateStructGEP(VAListAddr, reg_top_index, "reg_top_p");
+    // reg_top = CGF.Builder.CreateLoad(reg_top_p, "reg_top");
+    // Address BaseAddr(CGF.Builder.CreateInBoundsGEP(CGF.Int8Ty, reg_top, reg_offs),
+    //                 CGF.Int8Ty, CharUnits::fromQuantity(IsFPR ? 16 : 8));
+    // Address RegAddr = Address::invalid();
+    // llvm::Type *MemTy = CGF.ConvertTypeForMem(Ty), *ElementTy = MemTy;
+
+    // if (IsIndirect) {
+    //     // If it's been passed indirectly (actually a struct), whatever we find from
+    //     // stored registers or on the stack will actually be a struct **.
+    //     MemTy = llvm::PointerType::getUnqual(MemTy);
+    // }
+
+    // const Type *Base = nullptr;
+    // uint64_t NumMembers = 0;
+    // bool IsHFA = isHomogeneousAggregate(Ty, Base, NumMembers);
+    // if (IsHFA && NumMembers > 1) {
+    //     // Homogeneous aggregates passed in registers will have their elements split
+    //     // and stored 16-bytes apart regardless of size (they're notionally in qN,
+    //     // qN+1, ...). We reload and store into a temporary local variable
+    //     // contiguously.
+    //     assert(!IsIndirect && "Homogeneous aggregates should be passed directly");
+    //     auto BaseTyInfo = getContext().getTypeInfoInChars(QualType(Base, 0));
+    //     llvm::Type *BaseTy = CGF.ConvertType(QualType(Base, 0));
+    //     llvm::Type *HFATy = llvm::ArrayType::get(BaseTy, NumMembers);
+    //     Address Tmp = CGF.CreateTempAlloca(HFATy,
+    //                                     std::max(TyAlign, BaseTyInfo.Align));
+
+    //     // On big-endian platforms, the value will be right-aligned in its slot.
+    //     int Offset = 0;
+    //     if (CGF.CGM.getDataLayout().isBigEndian() &&
+    //         BaseTyInfo.Width.getQuantity() < 16)
+    //     Offset = 16 - BaseTyInfo.Width.getQuantity();
+
+    //     for (unsigned i = 0; i < NumMembers; ++i) {
+    //     CharUnits BaseOffset = CharUnits::fromQuantity(16 * i + Offset);
+    //     Address LoadAddr =
+    //         CGF.Builder.CreateConstInBoundsByteGEP(BaseAddr, BaseOffset);
+    //     LoadAddr = LoadAddr.withElementType(BaseTy);
+
+    //     Address StoreAddr = CGF.Builder.CreateConstArrayGEP(Tmp, i);
+
+    //     llvm::Value *Elem = CGF.Builder.CreateLoad(LoadAddr);
+    //     CGF.Builder.CreateStore(Elem, StoreAddr);
+    //     }
+
+    //     RegAddr = Tmp.withElementType(MemTy);
+    // } else {
+    //     // Otherwise the object is contiguous in memory.
+
+    //     // It might be right-aligned in its slot.
+    //     CharUnits SlotSize = BaseAddr.getAlignment();
+    //     if (CGF.CGM.getDataLayout().isBigEndian() && !IsIndirect &&
+    //         (IsHFA || !isAggregateTypeForABI(Ty)) &&
+    //         TySize < SlotSize) {
+    //     CharUnits Offset = SlotSize - TySize;
+    //     BaseAddr = CGF.Builder.CreateConstInBoundsByteGEP(BaseAddr, Offset);
+    //     }
+
+    //     RegAddr = BaseAddr.withElementType(MemTy);
+    // }
+
+    // CGF.EmitBranch(ContBlock);
+
+    // //=======================================
+    // // Argument was on the stack
+    // //=======================================
+    // CGF.EmitBlock(OnStackBlock);
+
+    // Address stack_p = CGF.Builder.CreateStructGEP(VAListAddr, 0, "stack_p");
+    // llvm::Value *OnStackPtr = CGF.Builder.CreateLoad(stack_p, "stack");
+
+    // // Again, stack arguments may need realignment. In this case both integer and
+    // // floating-point ones might be affected.
+    // if (!IsIndirect && TyAlign.getQuantity() > 8) {
+    //     OnStackPtr = emitRoundPointerUpToAlignment(CGF, OnStackPtr, TyAlign);
+    // }
+    // Address OnStackAddr = Address(OnStackPtr, CGF.Int8Ty,
+    //                                 std::max(CharUnits::fromQuantity(8), TyAlign));
+
+    // // All stack slots are multiples of 8 bytes.
+    // CharUnits StackSlotSize = CharUnits::fromQuantity(8);
+    // CharUnits StackSize;
+    // if (IsIndirect)
+    //     StackSize = StackSlotSize;
+    // else
+    //     StackSize = TySize.alignTo(StackSlotSize);
+
+    // llvm::Value *StackSizeC = CGF.Builder.getSize(StackSize);
+    // llvm::Value *NewStack = CGF.Builder.CreateInBoundsGEP(
+    //     CGF.Int8Ty, OnStackPtr, StackSizeC, "new_stack");
+
+    // // Write the new value of __stack for the next call to va_arg
+    // CGF.Builder.CreateStore(NewStack, stack_p);
+
+    // if (CGF.CGM.getDataLayout().isBigEndian() && !isAggregateTypeForABI(Ty) &&
+    //     TySize < StackSlotSize) {
+    //     CharUnits Offset = StackSlotSize - TySize;
+    //     OnStackAddr = CGF.Builder.CreateConstInBoundsByteGEP(OnStackAddr, Offset);
+    // }
+
+    // OnStackAddr = OnStackAddr.withElementType(MemTy);
+
+    // CGF.EmitBranch(ContBlock);
+
+    // //=======================================
+    // // Tidy up
+    // //=======================================
+    // CGF.EmitBlock(ContBlock);
+
+    // Address ResAddr = emitMergePHI(CGF, RegAddr, InRegBlock, OnStackAddr,
+    //                                 OnStackBlock, "vaargs.addr");
+
+    // if (IsIndirect)
+    //     return CGF.EmitLoadOfAnyValue(
+    //         CGF.MakeAddrLValue(
+    //             Address(CGF.Builder.CreateLoad(ResAddr, "vaarg.addr"), ElementTy,
+    //                     TyAlign),
+    //             Ty),
+    //         Slot);
+
+    // return CGF.EmitLoadOfAnyValue(CGF.MakeAddrLValue(ResAddr, Ty), Slot);
 };
 
 /// This data structure is used by the Zig language code generation and
@@ -937,6 +1183,204 @@ pub const VaListX86_64 = extern struct {
     fp_offset: c_uint,
     overflow_arg_area: *anyopaque,
     reg_save_area: *anyopaque,
+
+    pub fn arg(list: *VaListX86_64, comptime T: type) T {
+        // 1. Determine whether arg_ty may be passed in the registers. If not go to step 7.
+        // 2. Compute num_gp to hold the number of general purpose registers needed to pass type
+        //    and num_fp to hold the number of floating point registers needed.
+        const num_gp, const num_fp, const gp_first = (comptime classify(T)) orelse
+            return list.argMem(T);
+
+        // 3. Verify whether arguments fit into registers. In the case:
+        //        l->gp_offset > 48 - num_gp * 8
+        //    or
+        //        l->fp_offset > 304 - num_fp * 16
+        //    go to step 7.
+        //
+        // NOTE: 304 is a typo, there are (6 * 8 + 8 * 16) = 176 bytes of
+        //    register save space).
+
+        if ((num_gp > 0 and list.gp_offset > 48 - num_gp * 8) or
+            (num_fp > 0 and list.fp_offset > 176 - num_fp * 16))
+            return list.argMem(T);
+
+        // 4. Fetch type from l->reg_save_area with an offset of l->gp_offset and/or
+        //    l->fp_offset. This may require copying to a temporary location in case the
+        //    parameter is passed in different register classes or requires an alignment greater
+        //    than 8 for general purpose registers and 16 for XMM registers.
+        var res: T = undefined;
+        if (num_gp > 0 and num_fp > 0) {
+            const fp_ptr: *f64 = @ptrFromInt(@intFromPtr(list.reg_save_area) + list.fp_offset);
+            const gp_ptr: *u64 = @ptrFromInt(@intFromPtr(list.reg_save_area) + list.gp_offset);
+            if (gp_first) {
+                const res_ptr: *extern struct { gp: u64, fp: f64 } = @ptrCast(&res);
+                res_ptr.gp = gp_ptr.*;
+                res_ptr.fp = fp_ptr.*;
+            } else {
+                const res_ptr: *extern struct { fp: f64, gp: u64 } = @ptrCast(&res);
+                res_ptr.gp = gp_ptr.*;
+                res_ptr.fp = fp_ptr.*;
+            }
+        } else {
+            const offset = if (num_gp > 0) list.gp_offset else list.fp_offset;
+            const ptr: *T = @ptrFromInt(@intFromPtr(list.reg_save_area) + offset);
+            res = ptr.*;
+        }
+
+        // 5. Set:
+        //        l->gp_offset = l->gp_offset + num_gp * 8
+        //        l->fp_offset = l->fp_offset + num_fp * 16.
+        if (num_gp > 0) {
+            list.gp_offset += num_gp * 8;
+        }
+        if (num_fp > 0) {
+            list.gp_offset += num_fp * 16;
+        }
+
+        // 6. Return the fetched type.
+        return res;
+    }
+
+    fn argMem(list: *VaListX86_64, comptime T: type) T {
+        // 7. Align l->overflow_arg_area upwards to a 16 byte boundary if alignment needed by
+        //    type exceeds 8 byte boundary.
+        // 8. Fetch type from l->overflow_arg_area.
+        const item_ptr: *T = if (@alignOf(T) > 8)
+            @ptrFromInt(std.mem.alignForward(u64, @intFromPtr(list.overflow_arg_area), @alignOf(T)))
+        else
+            @ptrCast(@alignCast(list.overflow_arg_area));
+
+        // 9. Set l->overflow_arg_area to:
+        //        l->overflow_arg_area + sizeof(type)
+        // 10. Align l->overflow_arg_area upwards to an 8 byte boundary.
+        list.overflow_arg_area = @ptrFromInt(std.mem.alignForward(u64, @intFromPtr(list.overflow_arg_area) + @sizeOf(T), 8));
+
+        // 11. Return the fetched type.
+        return item_ptr.*;
+    }
+
+    pub fn classify(comptime T: type) ?struct { u8, u8, bool } {
+        switch (@typeInfo(T)) {
+            .bool, .pointer => return .{ 1, 0, false },
+            .int,
+            .@"enum",
+            .error_set,
+            => {
+                if (@sizeOf(T) > 16) return null;
+                return .{ @divFloor(@sizeOf(T) - 1, 8) + 1, 0, false };
+            },
+            .float => |info| switch (info.bits) {
+                32, 64 => return .{ 0, 1, false },
+                128 => return .{ 0, 2, false },
+                16, 80 => return null,
+                else => unreachable,
+            },
+            .vector => return null,
+            .@"struct" => |info| {
+                if (@sizeOf(T) > 16) return null;
+                if (info.layout == .@"packed") {
+                    return .{ @divFloor(@sizeOf(T) - 1, 8) + 1, 0, false };
+                }
+
+                var total_gp: u8 = 0;
+                var total_fp: u8 = 0;
+                var gp_size = 0;
+                var gp_fist = true;
+                var last_float = false;
+                for (info.fields) |field| {
+                    if (field.type == void) continue;
+                    const elem_gp, const elem_fp, const elem_in_mem = classify(field.type) orelse return null;
+                    if (elem_in_mem) return .{ 0, 0, true, false };
+                    if (elem_fp == 2) return .{ 0, 2, false, false };
+
+                    if (total_gp == 0 and gp_size == 0 and elem_fp != 0) gp_fist = false;
+                    const is_float = elem_gp == 0 and elem_fp == 1 and @sizeOf(field.type) == 4;
+
+                    if (is_float) {
+                        if (last_float) {
+                            total_fp += 1;
+                            last_float = false;
+                        } else if (gp_size == 0) {
+                            last_float = true;
+                        } else if (gp_size <= 4) {
+                            gp_size = 0;
+                            total_gp += 1;
+                        } else {
+                            gp_size = 0;
+                            total_gp += 1;
+                            last_float = true;
+                        }
+                        continue;
+                    }
+
+                    if (elem_fp == 1) {
+                        if (last_float) {
+                            total_fp += 1;
+                            last_float = false;
+                        }
+                        if (gp_size != 0) {
+                            total_gp += 1;
+                            gp_size = 0;
+                        }
+                        total_fp += 1;
+                        continue;
+                    }
+                    if (last_float) {
+                        if (@sizeOf(field.type) > 4) {
+                            total_fp += 1;
+                        } else {
+                            gp_size += 4;
+                        }
+                        last_float = false;
+                    }
+
+                    gp_size += @sizeOf(field.type);
+                }
+                if (last_float) {
+                    if (gp_size != 0) {
+                        gp_size += 4;
+                    } else {
+                        total_fp += 1;
+                    }
+                }
+                total_gp += gp_size / 8;
+                return .{ total_gp, total_fp, gp_fist };
+            },
+
+            .@"union" => |info| {
+                if (@sizeOf(T) > 16) return null;
+                if (info.layout == .@"packed") {
+                    return .{ @divFloor(@sizeOf(T) - 1, 8) + 1, 0, false };
+                }
+
+                @compileError("TODO classify union");
+            },
+            else => @compileError("can't get non-extern compatible type"),
+        }
+    }
+
+    const Kind = enum { i8, i16, i32, i64, i128, f32, f64 };
+
+    fn getKind(comptime T: type) ?[]Kind {
+        return switch (@typeInfo(T)) {
+            .bool => &.{.i8},
+            .pointer => &.{.i64},
+            .int,
+            .@"enum",
+            .error_set,
+            => {
+                if (@sizeOf(T) > 16) return null;
+                return .{ @divFloor(@sizeOf(T) - 1, 8) + 1, 0, false };
+            },
+            .float => |info| switch (info.bits) {
+                32, 64 => return .{ 0, 1, false },
+                128 => return .{ 0, 2, false },
+                16, 80 => return null,
+                else => unreachable,
+            },
+            .vector => return null,
+        };
+    }
 };
 
 /// This data structure is used by the Zig language code generation and
@@ -961,7 +1405,250 @@ pub const VaListAix = *opaque {};
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
-pub const VaListCommon = *opaque {};
+pub const VaListCommon = *opaque {
+
+    // fn airCVaArg(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
+    //     const o = self.ng.object;
+    //     const pt = o.pt;
+    //     const zcu = pt.zcu;
+    //     const ty_op = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
+    //     const list = try self.resolveInst(ty_op.operand);
+    //     const arg_ty = ty_op.ty.toType();
+
+    //     switch (o.target.cpu.arch) {
+    //         .aarch64, .aarch64_be => {
+    //             const func = zcu.funcInfo(zcu.navValue(self.ng.nav_index).toIntern());
+    //             const fn_ty = Type.fromInterned(func.ty);
+    //             const fn_info = zcu.typeToFunc(fn_ty).?;
+    //             if (fn_info.cc == .aarch64_aapcs_win) {
+    //                 const is_indirect = switch (arg_ty.zigTypeTag(zcu)) {
+    //                     .array => arg_ty.bitSize(zcu) > 128,
+    //                     .@"struct", .@"union" => arg_ty.bitSize(zcu) > 128 and arg_ty.containerLayout(zcu) != .@"packed",
+    //                     else => false,
+    //                 };
+
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = is_indirect,
+    //                     .slot_bytes = 8,
+    //                     .allow_higher_align = false,
+    //                 });
+    //             } else if (fn_info.cc == .aarch64_aapcs_darwin) {
+    //                 if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+
+    //                 // TODO also check that arg_ty isn't homogenous
+    //                 const is_indirect = arg_ty.abiSize(zcu) > 16;
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = is_indirect,
+    //                     .slot_bytes = 8,
+    //                     .allow_higher_align = false,
+    //                 });
+    //             }
+
+    //             return self.aarch64VaArg(list, arg_ty);
+    //         },
+    //         .amdgcn => {
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = 4,
+    //                 .allow_higher_align = false,
+    //             });
+    //         },
+    //         .arc => {
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = 4,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .csky => {
+    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = o.target.ptrBitWidth() / 8,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .loongarch32, .loongarch64 => {
+    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+
+    //             const slot_bytes = o.target.ptrBitWidth();
+    //             const is_indirect = arg_ty.abiSize(zcu) > 2 * slot_bytes;
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = is_indirect,
+    //                 .slot_bytes = slot_bytes,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .nvptx, .nvptx64 => {
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = 1,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .powerpc, .powerpcle => {
+    //             if (o.target.os.tag == .aix) {
+    //                 // Note add complex type special handling if added.
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = false,
+    //                     .slot_bytes = 4,
+    //                     .allow_higher_align = true,
+    //                 });
+    //             } else if (o.target.os.tag.isDarwin()) {
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = aarch64_c_abi.classifyType(arg_ty, zcu) == .memory,
+    //                     .slot_bytes = 4,
+    //                     .allow_higher_align = true,
+    //                 });
+    //             }
+
+    //             const llvm_arg_ty = try o.lowerType(arg_ty);
+    //             return self.wip.vaArg(list, llvm_arg_ty, "");
+    //         },
+    //         .powerpc64, .powerpc64le => {
+    //             if (o.target.os.tag == .aix) {
+    //                 // Note add complex type special handling if added.
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = false,
+    //                     .slot_bytes = o.target.ptrBitWidth() / 8,
+    //                     .allow_higher_align = true,
+    //                 });
+    //             }
+
+    //             // Note add complex type special handling if added.
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = 8,
+    //                 .allow_higher_align = true,
+    //                 .force_right_adjust = true,
+    //             });
+    //         },
+    //         .riscv32, .riscv64 => {
+    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+
+    //             // TODO GCC compatibility on riscv32 eabi
+
+    //             const slot_bytes = o.target.ptrBitWidth() / 8;
+    //             const is_indirect = arg_ty.abiSize(zcu) > 2 * slot_bytes;
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = is_indirect,
+    //                 .slot_bytes = slot_bytes,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .wasm32, .wasm64 => {
+    //             const is_indirect = switch (arg_ty.zigTypeTag(zcu)) {
+    //                 .array, .@"union" => arg_ty.hasRuntimeBitsIgnoreComptime(zcu),
+    //                 .@"struct" => arg_ty.hasRuntimeBitsIgnoreComptime(zcu) and
+    //                     wasm_c_abi.classifyType(arg_ty, zcu)[0] == .indirect,
+    //                 else => false,
+    //             };
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = is_indirect,
+    //                 .slot_bytes = 4,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .x86 => {
+    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+
+    //             // TODO adjust alignment of some types
+
+    //             return self.voidPtrVaArg(list, arg_ty, .{
+    //                 .is_indirect = false,
+    //                 .slot_bytes = 4,
+    //                 .allow_higher_align = true,
+    //             });
+    //         },
+    //         .x86_64 => {
+    //             const func = zcu.funcInfo(zcu.navValue(self.ng.nav_index).toIntern());
+    //             const fn_ty = Type.fromInterned(func.ty);
+    //             const fn_info = zcu.typeToFunc(fn_ty).?;
+    //             if (fn_info.cc == .x86_win) {
+    //                 const arg_bit_size = arg_ty.bitSize(zcu);
+    //                 const is_indirect = arg_bit_size > 64 or !std.math.isPowerOfTwo(arg_bit_size);
+
+    //                 return self.voidPtrVaArg(list, arg_ty, .{
+    //                     .is_indirect = is_indirect,
+    //                     .slot_bytes = 8,
+    //                     .allow_higher_align = false,
+    //                 });
+    //             }
+    //             return self.x86_64VaArg(list, arg_ty);
+    //         },
+    //         else => {
+    //             const llvm_arg_ty = try o.lowerType(arg_ty);
+    //             return self.wip.vaArg(list, llvm_arg_ty, "");
+    //         },
+    //     }
+    // }
+
+    // fn voidPtrVaArg(
+    //     self: *FuncGen,
+    //     void_ptr_ptr: Builder.Value,
+    //     arg_ty: Type,
+    //     opts: struct {
+    //         is_indirect: bool,
+    //         slot_bytes: u32,
+    //         allow_higher_align: bool,
+    //         force_right_adjust: bool = false,
+    //     },
+    // ) !Builder.Value {
+    //     const o = self.ng.object;
+    //     const pt = o.pt;
+    //     const zcu = pt.zcu;
+
+    //     const arg_alignment = arg_ty.abiAlignment(pt.zcu);
+    //     const item_ptr_ty = try pt.ptrType(.{
+    //         .child = arg_ty.toIntern(),
+    //         .flags = .{ .alignment = arg_alignment },
+    //     });
+
+    //     const llvm_usize = try o.lowerType(Type.usize);
+    //     const ptr_alignment = Type.ptrAbiAlignment(o.target).toLlvm();
+    //     const load_alignment = if (opts.is_indirect) ptr_alignment else arg_alignment.toLlvm();
+    //     const load_size = if (opts.is_indirect) Type.abiSize(.usize, zcu) else arg_ty.abiSize(zcu);
+
+    //     // Load the current VaList value.
+    //     const void_ptr = try self.wip.load(.normal, .ptr, void_ptr_ptr, ptr_alignment, "");
+
+    //     // Align the pointer for items with alignment bigger than the slot if
+    //     // the calling convention allows it.
+    //     const byte_alignment = load_alignment.toByteUnits().?;
+    //     const aligned_void_ptr = if (opts.allow_higher_align and byte_alignment > opts.slot_bytes)
+    //         try self.roundPtrUpToAlignment(void_ptr, byte_alignment)
+    //     else
+    //         void_ptr;
+
+    //     // Increment the item pointer and store it back.
+    //     const aligned_size = std.mem.alignForward(u64, load_size, opts.slot_bytes);
+    //     const next_ptr = try self.wip.gep(.inbounds, .i8, aligned_void_ptr, &.{
+    //         try o.builder.intValue(llvm_usize, aligned_size),
+    //     }, "");
+    //     _ = try self.wip.store(.normal, next_ptr, void_ptr_ptr, ptr_alignment);
+
+    //     // On big endian targets arguments smaller than slot_bytes will be on
+    //     // the right side of the slot.
+    //     const arg_size = arg_ty.abiSize(zcu);
+    //     const align_list = (arg_size < opts.slot_bytes and o.target.cpu.arch.endian() == .big) and
+    //         (arg_ty.zigTypeTag(zcu) != .@"struct" or opts.force_right_adjust);
+
+    //     const item_ptr = if (align_list)
+    //         try self.wip.gep(.inbounds, .i8, aligned_void_ptr, &.{
+    //             try o.builder.intValue(llvm_usize, opts.slot_bytes - arg_size),
+    //         }, "")
+    //     else
+    //         aligned_void_ptr;
+
+    //     if (opts.is_indirect) {
+    //         const direct_item_ptr = try self.wip.load(.normal, .ptr, item_ptr, ptr_alignment, "");
+    //         return self.load(direct_item_ptr, item_ptr_ty);
+    //     }
+
+    //     return self.load(item_ptr, item_ptr_ty);
+    // }
+};
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
