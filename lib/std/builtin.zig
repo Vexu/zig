@@ -1406,255 +1406,203 @@ pub const VaListAix = *opaque {};
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
 pub const VaListCommon = *opaque {
+    pub fn arg(list_ptr: *VaListCommon, comptime T: type) T {
+        const opts: struct {
+            is_indirect: bool,
+            slot_bytes: u32,
+            allow_higher_align: bool,
+            force_right_adjust: bool = false,
+        } = switch (builtin.target.cpu.arch) {
+            .aarch64, .aarch64_be => {
+                // const func = zcu.funcInfo(zcu.navValue(self.ng.nav_index).toIntern());
+                // const fn_ty = Type.fromInterned(func.ty);
+                // const fn_info = zcu.typeToFunc(fn_ty).?;
+                // if (fn_info.cc == .aarch64_aapcs_win) {
+                //     const is_indirect = switch (arg_ty.zigTypeTag(zcu)) {
+                //         .array => arg_ty.bitSize(zcu) > 128,
+                //         .@"struct", .@"union" => arg_ty.bitSize(zcu) > 128 and arg_ty.containerLayout(zcu) != .@"packed",
+                //         else => false,
+                //     };
 
-    // fn airCVaArg(self: *FuncGen, inst: Air.Inst.Index) !Builder.Value {
-    //     const o = self.ng.object;
-    //     const pt = o.pt;
-    //     const zcu = pt.zcu;
-    //     const ty_op = self.air.instructions.items(.data)[@intFromEnum(inst)].ty_op;
-    //     const list = try self.resolveInst(ty_op.operand);
-    //     const arg_ty = ty_op.ty.toType();
+                //     return self.voidPtrVaArg(list, arg_ty, .{
+                //         .is_indirect = is_indirect,
+                //         .slot_bytes = 8,
+                //         .allow_higher_align = false,
+                //     });
+                // } else if (fn_info.cc == .aarch64_aapcs_darwin) {
+                //     if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
 
-    //     switch (o.target.cpu.arch) {
-    //         .aarch64, .aarch64_be => {
-    //             const func = zcu.funcInfo(zcu.navValue(self.ng.nav_index).toIntern());
-    //             const fn_ty = Type.fromInterned(func.ty);
-    //             const fn_info = zcu.typeToFunc(fn_ty).?;
-    //             if (fn_info.cc == .aarch64_aapcs_win) {
-    //                 const is_indirect = switch (arg_ty.zigTypeTag(zcu)) {
-    //                     .array => arg_ty.bitSize(zcu) > 128,
-    //                     .@"struct", .@"union" => arg_ty.bitSize(zcu) > 128 and arg_ty.containerLayout(zcu) != .@"packed",
-    //                     else => false,
-    //                 };
+                //     // TODO also check that arg_ty isn't homogenous
+                //     const is_indirect = arg_ty.abiSize(zcu) > 16;
+                //     return self.voidPtrVaArg(list, arg_ty, .{
+                //         .is_indirect = is_indirect,
+                //         .slot_bytes = 8,
+                //         .allow_higher_align = false,
+                //     });
+                // }
 
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = is_indirect,
-    //                     .slot_bytes = 8,
-    //                     .allow_higher_align = false,
-    //                 });
-    //             } else if (fn_info.cc == .aarch64_aapcs_darwin) {
-    //                 if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+                // return self.aarch64VaArg(list, arg_ty);
+            },
+            .amdgcn => .{
+                .is_indirect = false,
+                .slot_bytes = 4,
+                .allow_higher_align = false,
+            },
+            .arc => .{
+                .is_indirect = false,
+                .slot_bytes = 4,
+                .allow_higher_align = true,
+            },
+            .csky => blk: {
+                if (@sizeOf(T) == 0) return std.mem.zeroes(T);
 
-    //                 // TODO also check that arg_ty isn't homogenous
-    //                 const is_indirect = arg_ty.abiSize(zcu) > 16;
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = is_indirect,
-    //                     .slot_bytes = 8,
-    //                     .allow_higher_align = false,
-    //                 });
-    //             }
+                break :blk .{
+                    .is_indirect = false,
+                    .slot_bytes = builtin.target.ptrBitWidth() / 8,
+                    .allow_higher_align = true,
+                };
+            },
+            .loongarch32, .loongarch64 => blk: {
+                if (@sizeOf(T) == 0) return std.mem.zeroes(T);
 
-    //             return self.aarch64VaArg(list, arg_ty);
-    //         },
-    //         .amdgcn => {
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = 4,
-    //                 .allow_higher_align = false,
-    //             });
-    //         },
-    //         .arc => {
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = 4,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .csky => {
-    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+                const slot_bytes = builtin.target.ptrBitWidth();
+                const is_indirect = @sizeOf(T) > 2 * slot_bytes;
+                break :blk .{
+                    .is_indirect = is_indirect,
+                    .slot_bytes = slot_bytes,
+                    .allow_higher_align = true,
+                };
+            },
+            .nvptx, .nvptx64 => .{
+                .is_indirect = false,
+                .slot_bytes = 1,
+                .allow_higher_align = true,
+            },
+            .powerpc, .powerpcle => if (builtin.target.os.tag == .aix) .{
+                // Note add complex type special handling if added.
+                .is_indirect = false,
+                .slot_bytes = 4,
+                .allow_higher_align = true,
+                // } else if (builtin.target.os.tag.isDarwin()) .{
+                //     .is_indirect = switch (@typeInfo(T)) {
+                //         .@"struct" => |info| switch (info.layout) {
+                //             .@"packed" => false,
+                //             else => @sizeOf(T) > 16,
+                //         },
+                //         .@"union" => |info| switch (info.layout) {
+                //             .@"packed" => false,
+                //             else => @sizeOf(T) > 16,
+                //         },
+                //         .vector => true,
+                //         else => false,
+                //     },
+                //     .slot_bytes = 4,
+                //     .allow_higher_align = true,
+            } else unreachable,
+            .powerpc64, .powerpc64le => if (builtin.target.os.tag == .aix) .{
+                // Note add complex type special handling if added.
+                .is_indirect = false,
+                .slot_bytes = builtin.target.ptrBitWidth() / 8,
+                .allow_higher_align = true,
+            } else .{
+                // Note add complex type special handling if added.
+                .is_indirect = false,
+                .slot_bytes = 8,
+                .allow_higher_align = true,
+                .force_right_adjust = true,
+            },
+            .riscv32, .riscv64 => blk: {
+                if (@sizeOf(T) == 0) return std.mem.zeroes(T);
 
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = o.target.ptrBitWidth() / 8,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .loongarch32, .loongarch64 => {
-    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+                // TODO GCC compatibility on riscv32 eabi
 
-    //             const slot_bytes = o.target.ptrBitWidth();
-    //             const is_indirect = arg_ty.abiSize(zcu) > 2 * slot_bytes;
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = is_indirect,
-    //                 .slot_bytes = slot_bytes,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .nvptx, .nvptx64 => {
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = 1,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .powerpc, .powerpcle => {
-    //             if (o.target.os.tag == .aix) {
-    //                 // Note add complex type special handling if added.
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = false,
-    //                     .slot_bytes = 4,
-    //                     .allow_higher_align = true,
-    //                 });
-    //             } else if (o.target.os.tag.isDarwin()) {
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = aarch64_c_abi.classifyType(arg_ty, zcu) == .memory,
-    //                     .slot_bytes = 4,
-    //                     .allow_higher_align = true,
-    //                 });
-    //             }
+                const slot_bytes = builtin.target.ptrBitWidth() / 8;
+                const is_indirect = @sizeOf(T) > 2 * slot_bytes;
+                break :blk .{
+                    .is_indirect = is_indirect,
+                    .slot_bytes = slot_bytes,
+                    .allow_higher_align = true,
+                };
+            },
+            .wasm32, .wasm64 => blk: {
+                const is_indirect = switch (@typeInfo(T)) {
+                    .@"union" => @sizeOf(T) > 0,
+                    .@"struct" => @sizeOf(T) > 0 and
+                        false,
+                    // wasm_c_abi.classifyType(arg_ty, zcu)[0] == .indirect,
+                    else => false,
+                };
+                break :blk .{
+                    .is_indirect = is_indirect,
+                    .slot_bytes = 4,
+                    .allow_higher_align = true,
+                };
+            },
+            .x86 => blk: {
+                if (@sizeOf(T) == 0) return std.mem.zeroes(T);
 
-    //             const llvm_arg_ty = try o.lowerType(arg_ty);
-    //             return self.wip.vaArg(list, llvm_arg_ty, "");
-    //         },
-    //         .powerpc64, .powerpc64le => {
-    //             if (o.target.os.tag == .aix) {
-    //                 // Note add complex type special handling if added.
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = false,
-    //                     .slot_bytes = o.target.ptrBitWidth() / 8,
-    //                     .allow_higher_align = true,
-    //                 });
-    //             }
+                // TODO adjust alignment of some types
 
-    //             // Note add complex type special handling if added.
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = 8,
-    //                 .allow_higher_align = true,
-    //                 .force_right_adjust = true,
-    //             });
-    //         },
-    //         .riscv32, .riscv64 => {
-    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+                break :blk .{
+                    .is_indirect = false,
+                    .slot_bytes = 4,
+                    .allow_higher_align = true,
+                };
+            },
+            .x86_64 => .{
+                // Assume x86_64_win calling convention.
+                .is_indirect = @bitSizeOf(T) > 64 or !std.math.isPowerOfTwo(@bitSizeOf(T)),
+                .slot_bytes = 8,
+                .allow_higher_align = false,
+            },
+            else => @compileError("unimplemented"),
+        };
 
-    //             // TODO GCC compatibility on riscv32 eabi
+        const ItemPtr = *T;
+        const LoadPtr = if (opts.is_indirect) *ItemPtr else ItemPtr;
 
-    //             const slot_bytes = o.target.ptrBitWidth() / 8;
-    //             const is_indirect = arg_ty.abiSize(zcu) > 2 * slot_bytes;
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = is_indirect,
-    //                 .slot_bytes = slot_bytes,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .wasm32, .wasm64 => {
-    //             const is_indirect = switch (arg_ty.zigTypeTag(zcu)) {
-    //                 .array, .@"union" => arg_ty.hasRuntimeBitsIgnoreComptime(zcu),
-    //                 .@"struct" => arg_ty.hasRuntimeBitsIgnoreComptime(zcu) and
-    //                     wasm_c_abi.classifyType(arg_ty, zcu)[0] == .indirect,
-    //                 else => false,
-    //             };
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = is_indirect,
-    //                 .slot_bytes = 4,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .x86 => {
-    //             if (!arg_ty.hasRuntimeBitsIgnoreComptime(zcu)) return .none;
+        // Load the current VaList value.
+        const list: [*]u8 = @ptrCast(list_ptr.*);
+        const casted_ptr: LoadPtr = @alignCast(@ptrCast(list));
 
-    //             // TODO adjust alignment of some types
+        // Align the pointer for items with alignment bigger than the slot if
+        // the calling convention allows it.
+        // const byte_alignment = load_alignment.toByteUnits().?;
+        const load_alignment = @alignOf(casted_ptr.*);
+        const aligned_ptr: LoadPtr = if (opts.allow_higher_align and load_alignment > opts.slot_bytes)
+            @ptrFromInt((@intFromPtr(casted_ptr) + load_alignment - 1) & -load_alignment)
+        else
+            casted_ptr;
 
-    //             return self.voidPtrVaArg(list, arg_ty, .{
-    //                 .is_indirect = false,
-    //                 .slot_bytes = 4,
-    //                 .allow_higher_align = true,
-    //             });
-    //         },
-    //         .x86_64 => {
-    //             const func = zcu.funcInfo(zcu.navValue(self.ng.nav_index).toIntern());
-    //             const fn_ty = Type.fromInterned(func.ty);
-    //             const fn_info = zcu.typeToFunc(fn_ty).?;
-    //             if (fn_info.cc == .x86_win) {
-    //                 const arg_bit_size = arg_ty.bitSize(zcu);
-    //                 const is_indirect = arg_bit_size > 64 or !std.math.isPowerOfTwo(arg_bit_size);
+        // Increment the item pointer and store it back.
+        const load_size = @sizeOf(casted_ptr.*);
+        const aligned_size = std.mem.alignForward(u64, load_size, opts.slot_bytes);
+        list_ptr.* = @ptrCast(list + aligned_size);
 
-    //                 return self.voidPtrVaArg(list, arg_ty, .{
-    //                     .is_indirect = is_indirect,
-    //                     .slot_bytes = 8,
-    //                     .allow_higher_align = false,
-    //                 });
-    //             }
-    //             return self.x86_64VaArg(list, arg_ty);
-    //         },
-    //         else => {
-    //             const llvm_arg_ty = try o.lowerType(arg_ty);
-    //             return self.wip.vaArg(list, llvm_arg_ty, "");
-    //         },
-    //     }
-    // }
+        // On big endian targets arguments smaller than slot_bytes will be on
+        // the right side of the slot.
+        const align_list = (@sizeOf(T) < opts.slot_bytes and builtin.target.cpu.arch.endian() == .big) and
+            (@typeInfo(T) != .@"struct" or opts.force_right_adjust);
 
-    // fn voidPtrVaArg(
-    //     self: *FuncGen,
-    //     void_ptr_ptr: Builder.Value,
-    //     arg_ty: Type,
-    //     opts: struct {
-    //         is_indirect: bool,
-    //         slot_bytes: u32,
-    //         allow_higher_align: bool,
-    //         force_right_adjust: bool = false,
-    //     },
-    // ) !Builder.Value {
-    //     const o = self.ng.object;
-    //     const pt = o.pt;
-    //     const zcu = pt.zcu;
+        const item_ptr: LoadPtr = if (align_list)
+            @ptrCast(@as([*]u8, @ptrCast(aligned_ptr)) + (opts.slot_bytes - @sizeOf(T)))
+        else
+            aligned_ptr;
 
-    //     const arg_alignment = arg_ty.abiAlignment(pt.zcu);
-    //     const item_ptr_ty = try pt.ptrType(.{
-    //         .child = arg_ty.toIntern(),
-    //         .flags = .{ .alignment = arg_alignment },
-    //     });
+        if (opts.is_indirect) {
+            const direct_item_ptr = item_ptr.*;
+            return direct_item_ptr.*;
+        }
 
-    //     const llvm_usize = try o.lowerType(Type.usize);
-    //     const ptr_alignment = Type.ptrAbiAlignment(o.target).toLlvm();
-    //     const load_alignment = if (opts.is_indirect) ptr_alignment else arg_alignment.toLlvm();
-    //     const load_size = if (opts.is_indirect) Type.abiSize(.usize, zcu) else arg_ty.abiSize(zcu);
-
-    //     // Load the current VaList value.
-    //     const void_ptr = try self.wip.load(.normal, .ptr, void_ptr_ptr, ptr_alignment, "");
-
-    //     // Align the pointer for items with alignment bigger than the slot if
-    //     // the calling convention allows it.
-    //     const byte_alignment = load_alignment.toByteUnits().?;
-    //     const aligned_void_ptr = if (opts.allow_higher_align and byte_alignment > opts.slot_bytes)
-    //         try self.roundPtrUpToAlignment(void_ptr, byte_alignment)
-    //     else
-    //         void_ptr;
-
-    //     // Increment the item pointer and store it back.
-    //     const aligned_size = std.mem.alignForward(u64, load_size, opts.slot_bytes);
-    //     const next_ptr = try self.wip.gep(.inbounds, .i8, aligned_void_ptr, &.{
-    //         try o.builder.intValue(llvm_usize, aligned_size),
-    //     }, "");
-    //     _ = try self.wip.store(.normal, next_ptr, void_ptr_ptr, ptr_alignment);
-
-    //     // On big endian targets arguments smaller than slot_bytes will be on
-    //     // the right side of the slot.
-    //     const arg_size = arg_ty.abiSize(zcu);
-    //     const align_list = (arg_size < opts.slot_bytes and o.target.cpu.arch.endian() == .big) and
-    //         (arg_ty.zigTypeTag(zcu) != .@"struct" or opts.force_right_adjust);
-
-    //     const item_ptr = if (align_list)
-    //         try self.wip.gep(.inbounds, .i8, aligned_void_ptr, &.{
-    //             try o.builder.intValue(llvm_usize, opts.slot_bytes - arg_size),
-    //         }, "")
-    //     else
-    //         aligned_void_ptr;
-
-    //     if (opts.is_indirect) {
-    //         const direct_item_ptr = try self.wip.load(.normal, .ptr, item_ptr, ptr_alignment, "");
-    //         return self.load(direct_item_ptr, item_ptr_ty);
-    //     }
-
-    //     return self.load(item_ptr, item_ptr_ty);
-    // }
+        return item_ptr.*;
+    }
 };
 
 /// This data structure is used by the Zig language code generation and
 /// therefore must be kept in sync with the compiler implementation.
 pub const VaList = switch (builtin.cpu.arch) {
     .aarch64, .aarch64_be => switch (builtin.os.tag) {
-        .windows => VaListWindows,
+        .windows => VaListCommon(.{}),
         .ios, .macos, .tvos, .watchos, .visionos => VaListDarwin,
         else => VaListAarch64,
     },

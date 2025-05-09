@@ -1,70 +1,41 @@
-	.text
-	.file	"a.c"
-	.globl	add                             # -- Begin function add
-	.p2align	4, 0x90
-	.type	add,@function
-add:                                    # @add
-	.cfi_startproc
-# %bb.0:
-	pushq	%rbp
-	.cfi_def_cfa_offset 16
-	.cfi_offset %rbp, -16
-	movq	%rsp, %rbp
-	.cfi_def_cfa_register %rbp
-	subq	$208, %rsp
-	testb	%al, %al
-	je	.LBB0_4
-# %bb.3:
-	movaps	%xmm0, -160(%rbp)
-	movaps	%xmm1, -144(%rbp)
-	movaps	%xmm2, -128(%rbp)
-	movaps	%xmm3, -112(%rbp)
-	movaps	%xmm4, -96(%rbp)
-	movaps	%xmm5, -80(%rbp)
-	movaps	%xmm6, -64(%rbp)
-	movaps	%xmm7, -48(%rbp)
-.LBB0_4:
-	movq	%r9, -168(%rbp)
-	movq	%r8, -176(%rbp)
-	movq	%rcx, -184(%rbp)
-	movq	%rdx, -192(%rbp)
-	movq	%rsi, -200(%rbp)
-	movq	%rdi, -208(%rbp)
-	movq	%fs:40, %rax
-	movq	%rax, -8(%rbp)
-	leaq	-208(%rbp), %rax
-	movq	%rax, -16(%rbp)
-	leaq	16(%rbp), %rax
-	movq	%rax, -24(%rbp)
-	movl	$48, -28(%rbp)
-	movl	$0, -32(%rbp)
-	movq	%fs:40, %rax
-	movq	-8(%rbp), %rcx
-	cmpq	%rcx, %rax
-	jne	.LBB0_2
-# %bb.1:
-	xorl	%eax, %eax
-                                        # kill: def $rax killed $eax
-	addq	$208, %rsp
-	popq	%rbp
-	.cfi_def_cfa %rsp, 8
-	retq
-.LBB0_2:
-	.cfi_def_cfa %rbp, 16
-	callq	__stack_chk_fail@PLT
-.Lfunc_end0:
-	.size	add, .Lfunc_end0-add
-	.cfi_endproc
-                                        # -- End function
-	.type	s,@object                       # @s
-	.bss
-	.globl	s
-	.p2align	2, 0x0
-s:
-	.zero	4
-	.size	s, 4
+; ModuleID = 'a.c'
+source_filename = "a.c"
+target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128-Fn32"
+target triple = "arm64-unknown-macosx10.4.0"
 
-	.ident	"clang version 19.1.7"
-	.section	".note.GNU-stack","",@progbits
-	.addrsig
-	.addrsig_sym __stack_chk_fail
+%struct.anon = type { i32 }
+%struct.A = type { [124 x double] }
+
+@s = global %struct.anon zeroinitializer, align 4
+
+; Function Attrs: noinline nounwind optnone ssp uwtable(sync)
+define void @add(ptr dead_on_unwind noalias writable sret(%struct.A) align 8 %0, ...) #0 {
+  %2 = alloca ptr, align 8
+  %3 = alloca %struct.A, align 8
+  call void @llvm.va_start.p0(ptr %2)
+  %4 = load ptr, ptr %2, align 8
+  %5 = getelementptr inbounds i8, ptr %4, i64 8
+  store ptr %5, ptr %2, align 8
+  %6 = load ptr, ptr %4, align 8
+  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %3, ptr align 8 %6, i64 992, i1 false)
+  ret void
+}
+
+; Function Attrs: nocallback nofree nosync nounwind willreturn
+declare void @llvm.va_start.p0(ptr) #1
+
+; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg) #2
+
+attributes #0 = { noinline nounwind optnone ssp uwtable(sync) "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="apple-m1" "target-features"="+aes,+altnzcv,+ccdp,+ccidx,+complxnum,+crc,+dit,+dotprod,+flagm,+fp-armv8,+fp16fml,+fptoint,+fullfp16,+jsconv,+lse,+neon,+pauth,+perfmon,+predres,+ras,+rcpc,+rdm,+sb,+sha2,+sha3,+specrestrict,+ssbs,+v8.1a,+v8.2a,+v8.3a,+v8.4a,+v8a,+zcm,+zcz" }
+attributes #1 = { nocallback nofree nosync nounwind willreturn }
+attributes #2 = { nocallback nofree nounwind willreturn memory(argmem: readwrite) }
+
+!llvm.module.flags = !{!0, !1, !2, !3}
+!llvm.ident = !{!4}
+
+!0 = !{i32 1, !"wchar_size", i32 4}
+!1 = !{i32 8, !"PIC Level", i32 2}
+!2 = !{i32 7, !"uwtable", i32 1}
+!3 = !{i32 7, !"frame-pointer", i32 1}
+!4 = !{!"clang version 19.1.7"}
